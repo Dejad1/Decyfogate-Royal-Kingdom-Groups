@@ -1,0 +1,368 @@
+// DecyfoGate School Platform -- core data model.
+// Modules map to future microservices per the build brief:
+// identity (User/Role), directory (Group/School/ClassLevel/ClassUnit/
+// Subject/Student/Guardian), attendance (AttendanceRecord), notifications
+// (NotificationLog), billing (Subscription). One Postgres database for now.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- identity ----------------
+
+enum Role {
+  GROUP_ADMIN
+  SCHOOL_ADMIN
+  FORM_TEACHER
+  SUBJECT_TEACHER
+  ONBOARDING_SPECIALIST
+  SUPPORT_AGENT
+  BILLING_MANAGER
+  COMPLIANCE_OFFICER
+}
+
+model User {
+  id           String  @id @default(uuid())
+  fullName     String
+  email        String  @unique
+  phone        String
+  passwordHash String
+  role         Role
+  isActive     Boolean @default(true)
+
+  // Group Admins are scoped to a Group; School Admins/Form/Subject teachers
+  // are scoped to a School. DecyfoTech internal roles are scoped to neither.
+  groupId  String?
+  group    Group?  @relation(fields: [groupId], references: [id])
+  schoolId String?
+  school   School? @relation(fields: [schoolId], references: [id])
+
+  formTeacherOfUnits ClassUnit[]           @relation("FormTeacher")
+  subjectAssignments ClassSubjectTeacher[]
+  attendanceMarked   AttendanceRecord[]    @relation("MarkedBy")
+  auditLogs          AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([schoolId])
+  @@index([groupId])
+}
+
+// ---------------- directory ----------------
+
+model Group {
+  id   String @id @default(uuid())
+  name String @unique
+
+  schools       School[]
+  users         User[]
+  subscriptions Subscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum SchoolType {
+  NURSERY_PRIMARY
+  SECONDARY
+}
+
+model School {
+  id      String     @id @default(uuid())
+  groupId String
+  group   Group      @relation(fields: [groupId], references: [id])
+  name    String
+  type    SchoolType
+
+  // "not yet arrived" auto-flag cutoff, e.g. "08:30"
+  attendanceCutoffTime String @default("08:30")
+
+  classLevels ClassLevel[]
+  subjects    Subject[]
+  students    Student[]
+  users       User[]
+  terms       Term[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([groupId, name])
+}
+
+model ClassLevel {
+  id       String @id @default(uuid())
+  schoolId String
+  school   School @relation(fields: [schoolId], references: [id])
+  name     String // e.g. "Primary 4", "SS 2"
+  order    Int // sort order within the school
+
+  units ClassUnit[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, name])
+}
+
+model ClassUnit {
+  id           String     @id @default(uuid())
+  classLevelId String
+  classLevel   ClassLevel @relation(fields: [classLevelId], references: [id])
+  name         String // "A" | "B" | "C"
+
+  formTeacherId String?
+  formTeacher   User?   @relation("FormTeacher", fields: [formTeacherId], references: [id])
+
+  students           Student[]
+  subjectTeachers    ClassSubjectTeacher[]
+  attendanceRecords  AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([classLevelId, name])
+}
+
+model Subject {
+  id         String  @id @default(uuid())
+  schoolId   String
+  school     School  @relation(fields: [schoolId], references: [id])
+  name       String
+  department String? // "Science" | "Arts" | "Commercial" | null (core/compulsory)
+
+  classLinks        ClassSubjectTeacher[]
+  attendanceRecords AttendanceRecord[]
+
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, name])
+}
+
+// Reused, per the brief, as both the teaching-assignment record AND the
+// authorization check for subject-scoped attendance marking: a Subject
+// Teacher may only mark attendance for a ClassUnit/Subject pair that has
+// a row here.
+model ClassSubjectTeacher {
+  id          String    @id @default(uuid())
+  classUnitId String
+  classUnit   ClassUnit @relation(fields: [classUnitId], references: [id])
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id])
+  teacherId   String
+  teacher     User      @relation(fields: [teacherId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([classUnitId, subjectId, teacherId])
+  @@index([teacherId])
+}
+
+model Term {
+  id        String   @id @default(uuid())
+  schoolId  String
+  school    School   @relation(fields: [schoolId], references: [id])
+  name      String // "First Term 2025/2026"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@unique([schoolId, name])
+}
+
+model Student {
+  id              String    @id @default(uuid())
+  schoolId        String
+  school          School    @relation(fields: [schoolId], references: [id])
+  classUnitId     String
+  classUnit       ClassUnit @relation(fields: [classUnitId], references: [id])
+  fullName        String
+  admissionNumber String    @unique
+  dateOfBirth     DateTime
+  gender          Gender
+
+  guardians         StudentGuardian[]
+  attendanceRecords AttendanceRecord[]
+  notifications     NotificationLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([classUnitId])
+  @@index([schoolId])
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+model Guardian {
+  id       String  @id @default(uuid())
+  fullName String
+  phone    String
+  email    String?
+
+  students      StudentGuardian[]
+  notifications NotificationLog[]
+
+  createdAt DateTime @default(now())
+
+  @@index([phone])
+}
+
+model StudentGuardian {
+  id          String   @id @default(uuid())
+  studentId   String
+  student     Student  @relation(fields: [studentId], references: [id])
+  guardianId  String
+  guardian    Guardian @relation(fields: [guardianId], references: [id])
+  relationship String // "Mother" | "Father" | "Uncle" | "Guardian" ...
+  isPrimary   Boolean  @default(false)
+
+  @@unique([studentId, guardianId])
+}
+
+// ---------------- attendance ----------------
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+}
+
+// DAILY_REGISTER: the Form Teacher's single daily mark -- answers "did the
+// child come to school" and is the only type that triggers a guardian
+// notification. SUBJECT: a Subject Teacher's per-period mark -- answers
+// "did the child show up to this specific class"; feeds reports and the
+// low-attendance flag but never independently notifies guardians.
+enum AttendanceEntryType {
+  DAILY_REGISTER
+  SUBJECT
+}
+
+model AttendanceRecord {
+  id          String              @id @default(uuid())
+  studentId   String
+  student     Student             @relation(fields: [studentId], references: [id])
+  classUnitId String
+  classUnit   ClassUnit           @relation(fields: [classUnitId], references: [id])
+  date        DateTime // date-only, time truncated to midnight UTC
+  type        AttendanceEntryType
+  status      AttendanceStatus
+
+  // only set when type == SUBJECT
+  subjectId String?
+  subject   Subject? @relation(fields: [subjectId], references: [id])
+  period    String?
+
+  markedByUserId String
+  markedByUser   User     @relation("MarkedBy", fields: [markedByUserId], references: [id])
+  markedAt       DateTime @default(now())
+
+  notifications NotificationLog[]
+
+  createdAt DateTime @default(now())
+
+  // one Form Teacher daily-register mark per student per day
+  @@unique([studentId, date, type, subjectId])
+  @@index([classUnitId, date])
+  @@index([studentId, date])
+}
+
+// ---------------- notifications ----------------
+
+enum NotificationChannel {
+  SMS
+  WHATSAPP
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum NotificationTrigger {
+  ATTENDANCE_MARKED
+  NOT_YET_ARRIVED
+  BROADCAST
+}
+
+// Dispatch is simulated for the demo (no live Termii/Twilio/WhatsApp
+// Business API key configured) but modeled exactly as a real queued
+// dispatcher would be: rows move QUEUED -> SENT -> DELIVERED asynchronously,
+// never inline within the request that created them.
+model NotificationLog {
+  id         String              @id @default(uuid())
+  studentId  String
+  student    Student             @relation(fields: [studentId], references: [id])
+  guardianId String
+  guardian   Guardian            @relation(fields: [guardianId], references: [id])
+  channel    NotificationChannel
+  trigger    NotificationTrigger
+  message    String
+  status     NotificationStatus  @default(QUEUED)
+
+  attendanceRecordId String?
+  attendanceRecord   AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id])
+
+  createdAt   DateTime  @default(now())
+  sentAt      DateTime?
+  deliveredAt DateTime?
+
+  @@index([studentId])
+  @@index([status])
+}
+
+// ---------------- billing (stubbed) ----------------
+
+enum SubscriptionTier {
+  STARTER
+  GROWTH
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+model Subscription {
+  id      String             @id @default(uuid())
+  groupId String
+  group   Group              @relation(fields: [groupId], references: [id])
+  tier    SubscriptionTier
+  status  SubscriptionStatus
+  seats   Int
+
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ---------------- compliance ----------------
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  action     String
+  targetType String
+  targetId   String
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId])
+  @@index([targetType, targetId])
+}
