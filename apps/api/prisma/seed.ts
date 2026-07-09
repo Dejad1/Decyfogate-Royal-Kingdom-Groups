@@ -13,6 +13,7 @@ import {
   SUBJECT_TEACHER_BUNDLES,
   subjectsForUnit,
 } from "./seed-data/curriculum";
+import { buildAttendanceMessage } from "../src/lib/messages";
 
 const prisma = new PrismaClient();
 const rng: Rng = makeRng(20260708);
@@ -322,8 +323,18 @@ async function backfillAttendanceForSchool(
   studentsByUnit: Map<string, SeededStudent[]>,
   formTeacherByUnit: Map<string, string>,
   teacherByUnitSubject: Map<string, string>,
-  subjectIdByName: Map<string, string>
+  subjectIdByName: Map<string, string>,
+  schoolNameById: Map<string, string>
 ) {
+  const studentNameById = new Map<string, string>();
+  const schoolIdByUnit = new Map<string, string>();
+  for (const unit of units) {
+    schoolIdByUnit.set(unit.id, unit.schoolId);
+    for (const student of studentsByUnit.get(unit.id) ?? []) {
+      studentNameById.set(student.id, student.fullName);
+    }
+  }
+
   const days = schoolDaysBack(SCHOOL_DAYS_BACK);
   const recentDays = new Set(days.slice(-NOTIFICATION_BACKFILL_DAYS).map((d) => d.getTime()));
   const subjectDays = days.slice(-SUBJECT_ATTENDANCE_BACKFILL_DAYS);
@@ -379,7 +390,7 @@ async function backfillAttendanceForSchool(
     });
 
     if (recentDays.has(day.getTime())) {
-      await backfillNotificationsForDay(dailyRecords, day);
+      await backfillNotificationsForDay(dailyRecords, day, studentNameById, schoolIdByUnit, schoolNameById);
     }
   }
 
@@ -418,8 +429,11 @@ async function backfillAttendanceForSchool(
 }
 
 async function backfillNotificationsForDay(
-  dailyRecords: { id: string; studentId: string; status: AttendanceStatus }[],
-  day: Date
+  dailyRecords: { id: string; studentId: string; classUnitId: string; status: AttendanceStatus }[],
+  day: Date,
+  studentNameById: Map<string, string>,
+  schoolIdByUnit: Map<string, string>,
+  schoolNameById: Map<string, string>
 ) {
   const studentIds = dailyRecords.map((r) => r.studentId);
   const guardianLinks = await prisma.studentGuardian.findMany({
@@ -433,8 +447,8 @@ async function backfillNotificationsForDay(
     guardiansByStudent.set(link.studentId, list);
   }
 
-  const createdAt = new Date(day);
-  createdAt.setUTCHours(7, intBetween(rng, 30, 55), 0, 0);
+  const dayStart = new Date(day);
+  dayStart.setUTCHours(7, intBetween(rng, 30, 40), 0, 0);
 
   const rows: {
     id: string;
@@ -450,21 +464,33 @@ async function backfillNotificationsForDay(
     deliveredAt: Date;
   }[] = [];
 
+  // Each record gets its own slightly staggered createdAt (a form teacher
+  // marks a roster of 8-25 pupils one at a time, not all in the same
+  // instant), and each row's sent/delivered offsets are independently
+  // randomized -- otherwise a whole day's backfilled notifications would
+  // share one identical timestamp, which reads as obviously simulated.
+  let cursorMs = dayStart.getTime();
+
   for (const record of dailyRecords) {
+    cursorMs += intBetween(rng, 4, 18) * 1000;
+    const createdAt = new Date(cursorMs);
     const guardianIds = guardiansByStudent.get(record.studentId) ?? [];
-    const sentAt = new Date(createdAt.getTime() + 45_000);
-    const deliveredAt = new Date(createdAt.getTime() + 150_000);
-    const statusWord = record.status === "PRESENT" ? "PRESENT" : record.status === "LATE" ? "LATE" : "ABSENT";
+    const schoolId = schoolIdByUnit.get(record.classUnitId) ?? "";
+    const studentName = studentNameById.get(record.studentId) ?? "Pupil";
+    const schoolName = schoolNameById.get(schoolId) ?? "School";
+    const message = buildAttendanceMessage(record.status as "PRESENT" | "LATE" | "ABSENT", studentName, schoolName, createdAt, rng);
 
     for (const guardianId of guardianIds) {
       for (const channel of [NotificationChannel.SMS, NotificationChannel.WHATSAPP]) {
+        const sentAt = new Date(createdAt.getTime() + intBetween(rng, 20, 90) * 1000);
+        const deliveredAt = new Date(sentAt.getTime() + intBetween(rng, 40, 180) * 1000);
         rows.push({
           id: randomUUID(),
           studentId: record.studentId,
           guardianId,
           channel,
           trigger: NotificationTrigger.ATTENDANCE_MARKED,
-          message: `Attendance update: marked ${statusWord} today.`,
+          message,
           status: "DELIVERED",
           attendanceRecordId: record.id,
           createdAt,
@@ -595,8 +621,20 @@ async function main() {
     if (u.formTeacherId) formTeacherByUnit.set(u.id, u.formTeacherId);
   }
 
+  const schoolNameById = new Map([
+    [primarySchool.id, primarySchool.name],
+    [collegeSchool.id, collegeSchool.name],
+  ]);
+
   console.log(`Backfilling ${SCHOOL_DAYS_BACK} school days of attendance history...`);
-  await backfillAttendanceForSchool(allUnits, studentsByUnit, formTeacherByUnit, teacherByUnitSubject, subjectIdByName);
+  await backfillAttendanceForSchool(
+    allUnits,
+    studentsByUnit,
+    formTeacherByUnit,
+    teacherByUnitSubject,
+    subjectIdByName,
+    schoolNameById
+  );
 
   const totalStudents = Array.from(studentsByUnit.values()).reduce((sum, arr) => sum + arr.length, 0);
   console.log("\nSeed complete.");

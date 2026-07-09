@@ -8,6 +8,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import { HttpError } from "../../middleware/errorHandler";
 import { AuthTokenPayload } from "../../lib/jwt";
+import { buildAttendanceMessage, buildNotYetArrivedMessage } from "../../lib/messages";
 
 // Notifications are queued, never dispatched synchronously inside the
 // request that created them (per the build brief). For this demo there is
@@ -18,18 +19,6 @@ import { AuthTokenPayload } from "../../lib/jwt";
 // everything appearing instantly. A production deployment would swap
 // `simulateDispatch` for a real queue worker (BullMQ/Redis) calling the
 // SMS/WhatsApp provider.
-
-function attendanceMessage(studentName: string, schoolName: string, status: AttendanceStatus, time: Date) {
-  const stamp = time.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
-  switch (status) {
-    case AttendanceStatus.PRESENT:
-      return `${schoolName}: ${studentName} was marked PRESENT at ${stamp} today.`;
-    case AttendanceStatus.LATE:
-      return `${schoolName}: ${studentName} arrived LATE at ${stamp} today.`;
-    case AttendanceStatus.ABSENT:
-      return `${schoolName}: ${studentName} was marked ABSENT today. Please contact the school office if this is unexpected.`;
-  }
-}
 
 function simulateDispatch(notificationLogId: string) {
   const sentDelayMs = 400 + Math.random() * 800;
@@ -68,7 +57,12 @@ export async function queueAttendanceNotification(params: {
   });
 
   const now = new Date();
-  const message = attendanceMessage(params.studentName, params.schoolName, params.status, now);
+  const message = buildAttendanceMessage(
+    params.status as "PRESENT" | "LATE" | "ABSENT",
+    params.studentName,
+    params.schoolName,
+    now
+  );
 
   const created = await Promise.all(
     guardianLinks.flatMap((link) =>
@@ -101,7 +95,7 @@ export async function queueNotYetArrivedNotification(params: {
     include: { guardian: true },
   });
 
-  const message = `${params.schoolName}: ${params.studentName} has not yet been marked present today. If this is unexpected, please contact the school office.`;
+  const message = buildNotYetArrivedMessage(params.studentName, params.schoolName);
 
   const created = await Promise.all(
     guardianLinks.flatMap((link) =>

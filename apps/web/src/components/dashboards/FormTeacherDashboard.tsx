@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { formatPhoneNumber } from "@decyfogate/shared-types";
 import { useAuth } from "@/lib/auth-context";
 import { NotificationsPanel } from "./NotificationsPanel";
 
@@ -145,7 +146,7 @@ export function FormTeacherDashboard() {
                     <p className="truncate text-sm font-medium text-slate-900">{student.fullName}</p>
                     <p className="text-xs text-slate-500">
                       {student.admissionNumber}
-                      {primaryGuardian && ` · ${primaryGuardian.relationship}: ${primaryGuardian.guardian.phone}`}
+                      {primaryGuardian && ` · ${primaryGuardian.relationship}: ${formatPhoneNumber(primaryGuardian.guardian.phone)}`}
                     </p>
                   </div>
                   <div className="flex shrink-0 gap-2">

@@ -217,3 +217,12 @@ export interface BroadcastRequest {
   classUnitId?: string;
   message: string;
 }
+
+// ---- Formatting helpers shared by web and mobile ----
+
+/** "08135634193" -> "0813 563 4193" (11-digit Nigerian mobile numbers). Falls back to the raw input for any other shape. */
+export function formatPhoneNumber(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length !== 11) return phone;
+  return `${digits.slice(0, 4)} ${digits.slice(4, 7)} ${digits.slice(7)}`;
+}

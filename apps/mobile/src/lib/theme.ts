@@ -18,4 +18,9 @@ export const colors = {
   amberBg: "#FEF3C7",
   slateBg: "#F1F5F9",
   slateText: "#475569",
+  sky: "#0369A1",
+  skyBg: "#F0F9FF",
+  green: "#15803D",
+  greenBg: "#F0FDF4",
+  highlightBg: "#FFFBEB",
 };

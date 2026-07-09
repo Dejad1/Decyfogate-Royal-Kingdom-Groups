@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { formatPhoneNumber } from "@decyfogate/shared-types";
 import { useAuth } from "@/lib/auth-context";
 import { StaffResponse } from "./types";
 
@@ -47,7 +48,7 @@ export function StaffPanel({ schoolId }: { schoolId: string }) {
                   <td className="px-4 py-2.5 text-slate-500">
                     {t.email}
                     <br />
-                    {t.phone}
+                    {formatPhoneNumber(t.phone)}
                   </td>
                 </tr>
               ))}
@@ -91,7 +92,7 @@ export function StaffPanel({ schoolId }: { schoolId: string }) {
                     <td className="px-4 py-2.5 align-top text-slate-500">
                       {t.email}
                       <br />
-                      {t.phone}
+                      {formatPhoneNumber(t.phone)}
                     </td>
                   </tr>
                 );

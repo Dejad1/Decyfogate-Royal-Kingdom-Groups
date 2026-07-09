@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { AttendanceEntryType, AttendanceStatus } from "@decyfogate/shared-types";
+import { AttendanceEntryType, AttendanceStatus, formatPhoneNumber } from "@decyfogate/shared-types";
 import { ClassUnitMine, RosterStudent } from "@decyfogate/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { NotificationsPanel } from "@/components/NotificationsPanel";
@@ -127,7 +127,7 @@ export function FormTeacherScreen() {
               </Text>
               <Text style={styles.studentMeta} numberOfLines={1}>
                 {student.admissionNumber}
-                {primaryGuardian ? ` · ${primaryGuardian.relationship}: ${primaryGuardian.guardian.phone}` : ""}
+                {primaryGuardian ? ` · ${primaryGuardian.relationship}: ${formatPhoneNumber(primaryGuardian.guardian.phone)}` : ""}
               </Text>
             </View>
             <View style={styles.buttonRow}>
