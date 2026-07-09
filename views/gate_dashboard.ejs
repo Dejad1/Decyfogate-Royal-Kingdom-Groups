@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DecyfoGate — Gatehouse Checkpoint</title>
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#F5F2EA; --ink-dim:#A9A6A0; --ground:#14161C;
+    --panel:#1C1E25; --panel-2:#22242C; --hairline:rgba(245,242,234,0.10);
+    --accent:#D3922F; --accent-dim:#4A3A1E;
+    --ok:#4CA771; --ok-dim:#1E3327;
+    --exit:#C15B3D; --exit-dim:#3E271D;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--ground); color:var(--ink); font-family:'IBM Plex Sans',sans-serif; padding:40px 24px 80px; }
+  .mast{ max-width:1100px; margin:0 auto 28px; }
+  .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1{ font-family:'Space Grotesk',sans-serif; font-size:28px; margin:0 0 6px; }
+  .mast-sub{ font-size:13px; color:var(--ink-dim); }
+
+  .wrap{ max-width:1100px; margin:0 auto; }
+
+  .control{ display:flex; gap:12px; background:var(--panel); border:1px solid var(--hairline);
+    border-radius:var(--radius); padding:16px; margin-bottom:20px; }
+  .control input{ flex:1; padding:12px 14px; background:var(--ground); border:1px solid var(--hairline);
+    border-radius:8px; color:var(--ink); font-family:'IBM Plex Mono',monospace; font-size:14px; }
+  .control input:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  .control button{ padding:0 20px; border:none; border-radius:8px; font-family:'Space Grotesk',sans-serif;
+    font-weight:600; font-size:13.5px; cursor:pointer; }
+  .btn-verify{ background:var(--accent); color:#161616; }
+  .btn-scan{ background:var(--panel-2); color:var(--ink); border:1px solid var(--hairline) !important; }
+
+  .scanner{ display:none; max-width:420px; margin:0 auto 20px; background:var(--panel);
+    border:1px solid var(--hairline); border-radius:var(--radius); padding:18px; text-align:center; }
+  .scanner h4{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 12px; }
+  #reader{ border-radius:10px; overflow:hidden; }
+
+  table{ width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--hairline);
+    border-radius:var(--radius); overflow:hidden; }
+  th{ background:var(--panel-2); text-align:left; padding:12px 16px; font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-dim); }
+  td{ padding:14px 16px; border-top:1px solid var(--hairline); font-size:13.5px; vertical-align:middle; }
+  .code{ font-family:'IBM Plex Mono',monospace; color:var(--accent); font-size:13px; }
+  .addr{ color:var(--accent); }
+  .pill{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.05em; text-transform:uppercase;
+    padding:4px 9px; border-radius:20px; }
+  .pill.st-CONFIRMED{ background:var(--accent-dim); color:var(--accent); }
+  .pill.st-INSIDE{ background:var(--ok-dim); color:var(--ok); }
+  .act{ border:none; border-radius:6px; padding:8px 14px; font-family:'Space Grotesk',sans-serif;
+    font-weight:600; font-size:12.5px; cursor:pointer; }
+  .act.enter{ background:var(--ok); color:#101a14; }
+  .act.exit{ background:var(--exit); color:#1c100b; }
+  .empty-row td{ text-align:center; color:var(--ink-dim); padding:36px 0; }
+
+  @media (max-width:700px){ table, thead, tbody, th, td, tr{ display:block; } th{ display:none; }
+    tr{ margin-bottom:10px; border-top:1px solid var(--hairline); } td{ border:none; padding:6px 16px; } }
+</style>
+</head>
+<body>
+
+  <div class="mast">
+    <p class="eyebrow">DecyfoGate · Gatehouse Checkpoint</p>
+    <h1>Live access manifest</h1>
+    <p class="mast-sub">Auto-refreshes every 15s · visitor phone &amp; NIN withheld from this screen by design.</p>
+  </div>
+
+  <div class="wrap">
+    <div class="control">
+      <input type="text" id="manualInput" placeholder="Scan or type pass code — DG-XXXXXX"
+             onkeypress="if(event.key==='Enter'){processPassCode(this.value);this.value='';}">
+      <button class="btn-verify" onclick="processPassCode(document.getElementById('manualInput').value); document.getElementById('manualInput').value='';">Verify</button>
+      <button class="btn-scan" onclick="toggleScanner()">📷 Camera</button>
+    </div>
+
+    <div class="scanner" id="scannerBox">
+      <h4>Align QR pass inside frame</h4>
+      <div id="reader"></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>Code</th><th>Visitor</th><th>Transit</th><th>Host</th><th>Destination</th><th>Status</th><th></th></tr>
+      </thead>
+      <tbody>
+        <% if (records.length === 0) { %>
+          <tr class="empty-row"><td colspan="7">No confirmed visitors expected right now.</td></tr>
+        <% } %>
+        <% records.forEach(r => { %>
+          <tr id="row-<%= r.pass_code %>" data-id="<%= r.id %>" data-status="<%= r.status %>">
+            <td class="code"><%= r.pass_code %></td>
+            <td><strong><%= r.visitor_name %></strong> (<%= r.guest_count %>)</td>
+            <td><%= r.vehicle_reg || 'On foot' %> · <%= r.transport_mode %></td>
+            <td><%= r.host_name %></td>
+            <td class="addr"><%= r.house_address %></td>
+            <td><span class="pill st-<%= r.status %>"><%= r.status %></span></td>
+            <td>
+              <% if (r.status === 'CONFIRMED') { %>
+                <button class="act enter" onclick="updateStatus('<%= r.id %>','CHECK_IN')">Confirm entry</button>
+              <% } else if (r.status === 'INSIDE') { %>
+                <button class="act exit" onclick="updateStatus('<%= r.id %>','CHECK_OUT')">Log exit</button>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+  <script>
+    let scanner = null;
+
+    async function updateStatus(recordId, actionType){
+      const res = await fetch('/api/gate/action', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ recordId, actionType })
+      });
+      const data = await res.json();
+      if (data.success) window.location.reload();
+    }
+
+    async function processPassCode(raw){
+      if(!raw) return;
+      const code = raw.replace('DECYFOGATE_VERIFY:', '').trim();
+      const row = document.getElementById('row-' + code);
+      if(!row){ alert('Pass code not found or not yet confirmed by the visitor.'); return; }
+      try { new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3').play(); } catch(e){}
+      if(scanner){ await scanner.clear(); document.getElementById('scannerBox').style.display='none'; }
+      const status = row.getAttribute('data-status');
+      const id = row.getAttribute('data-id');
+      if(status === 'CONFIRMED') updateStatus(id, 'CHECK_IN');
+      else if(status === 'INSIDE') updateStatus(id, 'CHECK_OUT');
+    }
+
+    function toggleScanner(){
+      const box = document.getElementById('scannerBox');
+      if(box.style.display === 'block'){
+        box.style.display = 'none';
+        if(scanner) scanner.clear();
+      } else {
+        box.style.display = 'block';
+        scanner = new Html5QrcodeScanner('reader', { fps:10, qrbox:{width:230,height:230} }, false);
+        scanner.render((text) => processPassCode(text), () => {});
+      }
+    }
+
+    setInterval(() => window.location.reload(), 15000);
+  </script>
+
+</body>
+</html>

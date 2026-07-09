@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DecyfoGate — Resident Workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#F5F2EA; --ink-dim:#A9A6A0; --ground:#14161C;
+    --panel:#1C1E25; --panel-2:#22242C; --hairline:rgba(245,242,234,0.10);
+    --accent:#D3922F; --accent-dim:#4A3A1E;
+    --ok:#4CA771; --ok-dim:#1E3327;
+    --exit:#C15B3D; --exit-dim:#3E271D;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:'IBM Plex Sans',sans-serif; padding:40px 24px 80px;
+  }
+  .mast{ max-width:980px; margin:0 auto 40px; }
+  .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1{ font-family:'Space Grotesk',sans-serif; font-size:30px; margin:0 0 6px; }
+  .mast-sub{ font-family:'IBM Plex Mono',monospace; font-size:12px; color:var(--ink-dim); letter-spacing:.03em; }
+
+  .grid{ max-width:980px; margin:0 auto; display:grid; grid-template-columns:360px 1fr; gap:24px; align-items:start; }
+  .panel{ background:var(--panel); border:1px solid var(--hairline); border-radius:var(--radius); padding:22px; }
+  .panel h2{ font-family:'Space Grotesk',sans-serif; font-size:16px; margin:0 0 16px; color:var(--ink); }
+
+  .field{ width:100%; padding:11px 12px; margin-bottom:10px; background:var(--ground);
+    border:1px solid var(--hairline); border-radius:8px; color:var(--ink); font-size:13.5px; font-family:inherit; }
+  .field:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+  select.field{ appearance:none; }
+  label.small{ font-size:11px; color:var(--ink-dim); display:block; margin:2px 0 4px; }
+  .btn{ width:100%; padding:12px 0; margin-top:8px; background:var(--accent); color:#161616;
+    border:none; border-radius:8px; font-weight:600; font-family:'Space Grotesk',sans-serif;
+    font-size:14px; cursor:pointer; }
+  .btn:hover{ filter:brightness(1.08); }
+
+  .ledger-head{ display:flex; justify-content:space-between; align-items:baseline; margin-bottom:14px; }
+  .ledger-count{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-dim); }
+
+  .stub{ display:flex; align-items:center; gap:14px; padding:14px 16px; margin-bottom:10px;
+    background:var(--panel-2); border-radius:10px; border-left:3px solid var(--ink-dim); }
+  .stub.st-PENDING{ border-left-color:var(--ink-dim); }
+  .stub.st-CONFIRMED{ border-left-color:var(--accent); }
+  .stub.st-INSIDE{ border-left-color:var(--ok); }
+  .stub.st-EXITED{ border-left-color:var(--hairline); opacity:.6; }
+
+  .stub-code{ font-family:'IBM Plex Mono',monospace; font-size:12.5px; color:var(--accent); min-width:96px; }
+  .stub-main{ flex:1; min-width:0; }
+  .stub-name{ font-weight:600; font-size:14px; }
+  .stub-meta{ font-size:12px; color:var(--ink-dim); margin-top:2px; }
+  .pill{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.05em; text-transform:uppercase;
+    padding:4px 9px; border-radius:20px; white-space:nowrap; }
+  .pill.st-PENDING{ background:var(--panel); color:var(--ink-dim); }
+  .pill.st-CONFIRMED{ background:var(--accent-dim); color:var(--accent); }
+  .pill.st-INSIDE{ background:var(--ok-dim); color:var(--ok); }
+  .pill.st-EXITED{ background:var(--panel); color:var(--ink-dim); }
+
+  .empty{ color:var(--ink-dim); font-size:13px; text-align:center; padding:30px 0; }
+
+  .toast{ position:fixed; bottom:24px; right:24px; max-width:340px; background:var(--panel-2);
+    border:1px solid var(--hairline); border-left:3px solid var(--ok); border-radius:10px;
+    padding:14px 16px; font-size:13px; box-shadow:0 20px 40px -20px rgba(0,0,0,.7);
+    display:none; }
+  .toast strong{ display:block; font-family:'IBM Plex Mono',monospace; font-size:10px;
+    letter-spacing:.08em; text-transform:uppercase; color:var(--ok); margin-bottom:4px; }
+
+  @media (max-width:800px){ .grid{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+
+  <div class="mast">
+    <p class="eyebrow">DecyfoGate · Resident Workspace</p>
+    <h1><%= resident.name %></h1>
+    <p class="mast-sub"><%= resident.house_address %> · LINE <%= resident.phone_number %></p>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <h2>Issue a new pass</h2>
+      <form action="/api/estate/book-visit" method="POST">
+        <input type="hidden" name="residentId" value="<%= resident.id %>">
+
+        <label class="small">Visitor name</label>
+        <input class="field" type="text" name="visitorName" placeholder="Full name" required>
+
+        <label class="small">Visitor phone</label>
+        <input class="field" type="text" name="visitorPhone" placeholder="234..." required>
+
+        <label class="small">National ID (NIN)</label>
+        <input class="field" type="text" name="visitorNin" placeholder="NIN" required>
+
+        <label class="small">Vehicle plate number</label>
+        <input class="field" type="text" name="vehicleReg" placeholder="Leave blank if walking in">
+
+        <label class="small">Guests accompanying</label>
+        <input class="field" type="number" name="guestCount" min="1" value="1" required>
+
+        <label class="small">Arriving by</label>
+        <select class="field" name="transportMode">
+          <option value="WALKING">Walking</option>
+          <option value="PERSONAL_VEHICLE">Personal vehicle</option>
+          <option value="UBER">Uber / Bolt</option>
+        </select>
+
+        <button class="btn" type="submit">Send invitation</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <div class="ledger-head">
+        <h2 style="margin:0;">Pass ledger</h2>
+        <span class="ledger-count"><%= bookings.length %> RECORD<%= bookings.length === 1 ? '' : 'S' %></span>
+      </div>
+
+      <% if (bookings.length === 0) { %>
+        <p class="empty">No passes issued yet. Send your first invitation on the left.</p>
+      <% } %>
+
+      <% bookings.forEach(b => { %>
+        <div class="stub st-<%= b.status %>">
+          <span class="stub-code"><%= b.pass_code %></span>
+          <div class="stub-main">
+            <div class="stub-name"><%= b.visitor_name %></div>
+            <div class="stub-meta"><%= b.transport_mode %><% if (b.vehicle_reg) { %> · <%= b.vehicle_reg %><% } %> · <%= b.guest_count %> guest<%= b.guest_count == 1 ? '' : 's' %></div>
+          </div>
+          <span class="pill st-<%= b.status %>"><%= b.status %></span>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"><strong>Gatehouse update</strong><span id="toastMsg"></span></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    socket.emit('register-resident', '<%= resident.id %>');
+    socket.on('visitor-status-alert', (data) => {
+      document.getElementById('toastMsg').textContent = data.message;
+      const toast = document.getElementById('toast');
+      toast.style.display = 'block';
+      try { new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3').play(); } catch(e){}
+      setTimeout(() => window.location.reload(), 3500);
+    });
+  </script>
+
+</body>
+</html>

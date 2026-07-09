@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DecyfoGate — Access &amp; Verification Platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#F5F2EA;
+    --ink-dim:#A9A6A0;
+    --ground:#14161C;
+    --panel:#1C1E25;
+    --panel-2:#22242C;
+    --hairline:rgba(245,242,234,0.10);
+    --metal:#C9B37E;
+    --school:#5B7CFA;
+    --school-dim:#2C355E;
+    --estate:#D3922F;
+    --estate-dim:#4A3A1E;
+    --church:#B8465C;
+    --church-dim:#4A2029;
+    --radius:18px;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(1100px 600px at 12% -10%, rgba(91,124,250,0.10), transparent 60%),
+      radial-gradient(900px 500px at 88% 0%, rgba(184,70,92,0.08), transparent 55%),
+      var(--ground);
+    color:var(--ink);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    padding:64px 24px 80px;
+  }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:12px;
+    letter-spacing:.16em;
+    color:var(--metal);
+    text-align:center;
+    text-transform:uppercase;
+    margin:0 0 18px;
+  }
+  h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:700;
+    font-size:clamp(32px, 5vw, 52px);
+    line-height:1.05;
+    text-align:center;
+    margin:0 auto 14px;
+    max-width:760px;
+    letter-spacing:-0.01em;
+  }
+  .sub{
+    text-align:center;
+    color:var(--ink-dim);
+    font-size:16px;
+    max-width:520px;
+    margin:0 auto 56px;
+    line-height:1.5;
+  }
+
+  /* ============ RACK ============ */
+  .rack{
+    display:flex;
+    justify-content:center;
+    gap:28px;
+    flex-wrap:wrap;
+    max-width:1100px;
+    margin:0 auto;
+    perspective:1800px;
+  }
+  .badge{
+    position:relative;
+    width:300px;
+    height:400px;
+    outline:none;
+    opacity:0;
+    transform:translateY(22px);
+    animation:rise .6s ease forwards;
+  }
+  .badge:nth-child(1){ animation-delay:.05s; }
+  .badge:nth-child(2){ animation-delay:.16s; }
+  .badge:nth-child(3){ animation-delay:.27s; }
+  @keyframes rise{ to{ opacity:1; transform:translateY(0); } }
+
+  .badge-inner{
+    position:relative;
+    width:100%;
+    height:100%;
+    transform-style:preserve-3d;
+    transition:transform .55s cubic-bezier(.2,.8,.2,1);
+  }
+  .badge.is-open .badge-inner{ transform:rotateY(180deg); }
+
+  .badge-face{
+    position:absolute;
+    inset:0;
+    border-radius:var(--radius);
+    backface-visibility:hidden;
+    border:1px solid var(--hairline);
+    background:linear-gradient(160deg, var(--panel-2), var(--panel));
+    box-shadow:0 24px 40px -20px rgba(0,0,0,.6);
+    padding:22px 22px 20px;
+    display:flex;
+    flex-direction:column;
+  }
+  .badge-face--back{ transform:rotateY(180deg); }
+
+  /* holographic sweep on hover, front only */
+  .badge-face--front::after{
+    content:"";
+    position:absolute; inset:0;
+    border-radius:var(--radius);
+    background:linear-gradient(115deg, transparent 40%, rgba(255,255,255,.10) 50%, transparent 60%);
+    background-size:220% 220%;
+    background-position:120% 120%;
+    transition:background-position .7s ease;
+    pointer-events:none;
+  }
+  .badge:hover .badge-face--front::after,
+  .badge:focus-visible .badge-face--front::after{ background-position:-20% -20%; }
+
+  .badge:hover .badge-face--front,
+  .badge:focus-visible .badge-face--front{
+    transform:translateY(-4px);
+    box-shadow:0 30px 50px -18px rgba(0,0,0,.7);
+  }
+  .badge-face--front{ transition:transform .3s ease, box-shadow .3s ease; }
+
+  .badge:focus-visible{ outline:none; }
+  .badge:focus-visible .badge-face--front,
+  .badge:focus-visible .badge-face--back{
+    outline:2px solid var(--accent, var(--metal));
+    outline-offset:3px;
+  }
+
+  /* punch hole */
+  .punch{
+    width:14px; height:14px;
+    border-radius:50%;
+    background:var(--ground);
+    border:1px solid var(--hairline);
+    margin:0 auto 16px;
+  }
+
+  /* chip */
+  .chip{
+    width:38px; height:28px;
+    border-radius:5px;
+    background:linear-gradient(135deg,#EAD9A4,#B8965A 55%,#8C6E3C);
+    position:relative;
+    margin-bottom:18px;
+  }
+  .chip::before, .chip::after{
+    content:""; position:absolute; left:6px; right:6px; height:1px;
+    background:rgba(0,0,0,.35);
+  }
+  .chip::before{ top:9px; } .chip::after{ top:18px; }
+
+  .badge-icon{ font-size:22px; line-height:1; margin-bottom:8px; }
+  .badge-name{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:21px;
+    color:var(--accent);
+    margin:0 0 6px;
+  }
+  .badge-desc{
+    font-size:13.5px;
+    color:var(--ink-dim);
+    line-height:1.5;
+    margin:0 0 auto;
+  }
+
+  .badge-footer{ margin-top:16px; }
+  .barcode{
+    height:20px;
+    border-radius:2px;
+    margin-bottom:8px;
+    background:repeating-linear-gradient(
+      90deg,
+      var(--ink) 0 2px, transparent 2px 5px,
+      var(--ink) 5px 6px, transparent 6px 10px,
+      var(--ink) 10px 13px, transparent 13px 16px,
+      var(--ink) 16px 17px, transparent 17px 22px,
+      var(--ink) 22px 24px, transparent 24px 28px
+    );
+    opacity:.85;
+  }
+  .serial{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:.06em;
+    color:var(--ink-dim);
+    display:flex;
+    justify-content:space-between;
+  }
+  .serial span:last-child{ color:var(--accent); }
+
+  .select-hint{
+    margin-top:14px;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    text-align:center;
+  }
+
+  /* ============ BACK FACE (LOGIN) ============ */
+  .back-top{ display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
+  .back-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--accent);
+  }
+  .flip-back{
+    background:none; border:none; color:var(--ink-dim); cursor:pointer;
+    font-size:13px; font-family:'IBM Plex Sans', sans-serif; padding:2px 4px;
+  }
+  .flip-back:hover{ color:var(--ink); }
+
+  .clearance{ margin:14px 0 16px; }
+  .clearance-label{ font-size:11px; color:var(--ink-dim); margin-bottom:6px; }
+  .pill-row{ display:flex; border:1px solid var(--hairline); border-radius:8px; overflow:hidden; }
+  .pill{
+    flex:1; text-align:center; padding:7px 0; font-size:12.5px; cursor:pointer;
+    background:var(--panel); color:var(--ink-dim); border:none; font-family:inherit;
+  }
+  .pill.active{ background:var(--accent-dim); color:var(--ink); }
+
+  .field{
+    width:100%; padding:11px 12px; margin-bottom:10px;
+    background:var(--ground); border:1px solid var(--hairline); border-radius:8px;
+    color:var(--ink); font-size:13.5px; font-family:'IBM Plex Sans', sans-serif;
+  }
+  .field:focus{ outline:2px solid var(--accent); outline-offset:1px; }
+
+  .enter-btn{
+    width:100%; padding:11px 0; margin-top:6px;
+    background:var(--accent); color:#111; border:none; border-radius:8px;
+    font-weight:600; font-size:13.5px; cursor:pointer; font-family:'Space Grotesk', sans-serif;
+  }
+  .enter-btn:hover{ filter:brightness(1.08); }
+
+  /* accent bindings per sector */
+  .badge--school{ --accent:var(--school); --accent-dim:var(--school-dim); }
+  .badge--estate{ --accent:var(--estate); --accent-dim:var(--estate-dim); }
+  .badge--church{ --accent:var(--church); --accent-dim:var(--church-dim); }
+
+  /* ============ MASTER KEY (SUPERADMIN) ============ */
+  .masterkey{
+    max-width:520px; margin:56px auto 0;
+    border:1px dashed var(--hairline);
+    border-radius:14px;
+    padding:16px 18px;
+  }
+  .masterkey-row{
+    display:flex; align-items:center; justify-content:space-between;
+    background:none; border:none; width:100%; cursor:pointer; padding:0;
+    color:var(--ink-dim); font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:.05em;
+  }
+  .masterkey-row:hover{ color:var(--ink); }
+  .masterkey-panel{
+    margin-top:14px; padding-top:14px; border-top:1px solid var(--hairline);
+  }
+  .masterkey-panel .field{ margin-bottom:8px; }
+  .masterkey .enter-btn{ background:var(--metal); }
+
+  footer.note{
+    text-align:center; color:var(--ink-dim); font-size:11.5px;
+    margin-top:40px; font-family:'IBM Plex Mono', monospace; letter-spacing:.04em;
+  }
+
+  @media (max-width:720px){
+    .rack{ flex-direction:column; align-items:center; }
+    .badge{ width:100%; max-width:340px; }
+  }
+  @media (prefers-reduced-motion: reduce){
+    .badge{ animation:none; opacity:1; transform:none; }
+    .badge-inner, .badge-face--front, .badge-face--front::after{ transition:none; }
+  }
+</style>
+</head>
+<body>
+
+  <p class="eyebrow">DecyfoGate · Access &amp; Verification Platform</p>
+  <h1>Know who's coming in — before they arrive.</h1>
+  <p class="sub">Attendance, gate passes and check-ins, verified in real time. Select a badge to sign in to your workspace.</p>
+
+  <div class="rack" role="list" aria-label="Sector workspaces">
+
+    <!-- SCHOOLS -->
+    <article class="badge badge--school" role="listitem" tabindex="0">
+      <div class="badge-inner">
+        <div class="badge-face badge-face--front" onclick="flipOpen(this)">
+          <div class="punch"></div>
+          <div class="chip"></div>
+          <div class="badge-icon">🏫</div>
+          <h2 class="badge-name">Schools</h2>
+          <p class="badge-desc">Mark attendance and notify guardians the moment it happens.</p>
+          <div class="badge-footer">
+            <div class="barcode"></div>
+            <div class="serial"><span>CLASSROOM CORRIDOR</span><span>SCH‑01</span></div>
+          </div>
+          <div class="select-hint">Tap to sign in →</div>
+        </div>
+
+        <div class="badge-face badge-face--back">
+          <div class="back-top">
+            <span class="back-label">Schools · Sign in</span>
+            <button type="button" class="flip-back" onclick="flipClose(this)">← Back</button>
+          </div>
+
+          <form action="/auth/login" method="POST">
+            <input type="hidden" name="sectorType" value="SCHOOL">
+            <input type="hidden" name="portalType" class="portalTypeField" value="">
+
+            <div class="clearance">
+              <div class="clearance-label">Clearance level</div>
+              <div class="pill-row">
+                <button type="button" class="pill active" onclick="setPortal(this,'')">Staff</button>
+                <button type="button" class="pill" onclick="setPortal(this,'ADMIN')">Administrator</button>
+              </div>
+            </div>
+
+            <input class="field" type="email" name="email" placeholder="Workspace email" required>
+            <input class="field" type="password" name="password" placeholder="Password" required>
+            <button class="enter-btn" type="submit">Enter classrooms</button>
+          </form>
+        </div>
+      </div>
+    </article>
+
+    <!-- ESTATES -->
+    <article class="badge badge--estate" role="listitem" tabindex="0">
+      <div class="badge-inner">
+        <div class="badge-face badge-face--front" onclick="flipOpen(this)">
+          <div class="punch"></div>
+          <div class="chip"></div>
+          <div class="badge-icon">🏡</div>
+          <h2 class="badge-name">Estates</h2>
+          <p class="badge-desc">Pre-approve guests, issue gate passes, track every entry and exit.</p>
+          <div class="badge-footer">
+            <div class="barcode"></div>
+            <div class="serial"><span>RESIDENTIAL CORRIDOR</span><span>EST‑01</span></div>
+          </div>
+          <div class="select-hint">Tap to sign in →</div>
+        </div>
+
+        <div class="badge-face badge-face--back">
+          <div class="back-top">
+            <span class="back-label">Estates · Sign in</span>
+            <button type="button" class="flip-back" onclick="flipClose(this)">← Back</button>
+          </div>
+
+          <form action="/auth/login" method="POST">
+            <input type="hidden" name="sectorType" value="ESTATE">
+            <input type="hidden" name="portalType" class="portalTypeField" value="">
+
+            <div class="clearance">
+              <div class="clearance-label">Clearance level</div>
+              <div class="pill-row">
+                <button type="button" class="pill active" onclick="setPortal(this,'')">Resident / Guard</button>
+                <button type="button" class="pill" onclick="setPortal(this,'ADMIN')">Administrator</button>
+              </div>
+            </div>
+
+            <input class="field" type="email" name="email" placeholder="Workspace email" required>
+            <input class="field" type="password" name="password" placeholder="Password" required>
+            <button class="enter-btn" type="submit">Enter residences</button>
+          </form>
+        </div>
+      </div>
+    </article>
+
+    <!-- CHURCHES -->
+    <article class="badge badge--church" role="listitem" tabindex="0">
+      <div class="badge-inner">
+        <div class="badge-face badge-face--front" onclick="flipOpen(this)">
+          <div class="punch"></div>
+          <div class="chip"></div>
+          <div class="badge-icon">⛪</div>
+          <h2 class="badge-name">Churches</h2>
+          <p class="badge-desc">Check children in and out of ministry safely, with parents notified instantly.</p>
+          <div class="badge-footer">
+            <div class="barcode"></div>
+            <div class="serial"><span>CONGREGATION CORRIDOR</span><span>CHU‑01</span></div>
+          </div>
+          <div class="select-hint">Tap to sign in →</div>
+        </div>
+
+        <div class="badge-face badge-face--back">
+          <div class="back-top">
+            <span class="back-label">Churches · Sign in</span>
+            <button type="button" class="flip-back" onclick="flipClose(this)">← Back</button>
+          </div>
+
+          <form action="/auth/login" method="POST">
+            <input type="hidden" name="sectorType" value="CHURCH">
+            <input type="hidden" name="portalType" class="portalTypeField" value="">
+
+            <div class="clearance">
+              <div class="clearance-label">Clearance level</div>
+              <div class="pill-row">
+                <button type="button" class="pill active" onclick="setPortal(this,'')">Sunday School</button>
+                <button type="button" class="pill" onclick="setPortal(this,'ADMIN')">Administrator</button>
+              </div>
+            </div>
+
+            <input class="field" type="email" name="email" placeholder="Workspace email" required>
+            <input class="field" type="password" name="password" placeholder="Password" required>
+            <button class="enter-btn" type="submit">Enter congregation</button>
+          </form>
+        </div>
+      </div>
+    </article>
+
+  </div>
+
+  <!-- MASTER KEY / SUPERADMIN -->
+  <div class="masterkey">
+    <button type="button" class="masterkey-row" onclick="toggleMaster()">
+      <span>🔧 TECHNICAL SUPPORT — PLATFORM ADMINISTRATORS</span>
+      <span id="masterChevron">＋</span>
+    </button>
+    <div class="masterkey-panel" id="masterPanel" hidden>
+      <form action="/auth/login" method="POST">
+        <input type="hidden" name="sectorType" value="SUPERADMIN">
+        <input class="field" type="email" name="email" placeholder="Support email" required>
+        <input class="field" type="password" name="password" placeholder="Password" required>
+        <button class="enter-btn" type="submit">Open support console</button>
+      </form>
+    </div>
+  </div>
+
+  <footer class="note">DECYFOGATE CORE · MULTI‑SECTOR ACCESS INFRASTRUCTURE</footer>
+
+  <script>
+    function flipOpen(faceEl){
+      faceEl.closest('.badge').classList.add('is-open');
+    }
+    function flipClose(btn){
+      btn.closest('.badge').classList.remove('is-open');
+    }
+    function setPortal(btn, value){
+      const row = btn.closest('.pill-row');
+      row.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      btn.closest('form').querySelector('.portalTypeField').value = value;
+    }
+    function toggleMaster(){
+      const panel = document.getElementById('masterPanel');
+      const chevron = document.getElementById('masterChevron');
+      const isHidden = panel.hasAttribute('hidden');
+      if(isHidden){ panel.removeAttribute('hidden'); chevron.textContent = '−'; }
+      else { panel.setAttribute('hidden',''); chevron.textContent = '＋'; }
+    }
+    document.querySelectorAll('.badge').forEach(b => {
+      b.addEventListener('keydown', (e) => {
+        if((e.key === 'Enter' || e.key === ' ') && !b.classList.contains('is-open')){
+          e.preventDefault();
+          b.classList.add('is-open');
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>

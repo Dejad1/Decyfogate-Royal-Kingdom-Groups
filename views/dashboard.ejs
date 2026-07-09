@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DecyfoGate — Class Teacher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#F5F2EA; --ink-dim:#A9A6A0; --ground:#14161C;
+    --panel:#1C1E25; --panel-2:#22242C; --hairline:rgba(245,242,234,0.10);
+    --accent:#5B7CFA; --accent-dim:#2C355E;
+    --ok:#4CA771; --ok-dim:#1E3327;
+    --absent:#C15B3D; --absent-dim:#3E271D;
+    --radius:14px;
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--ground); color:var(--ink); font-family:'IBM Plex Sans',sans-serif; padding:40px 24px 80px; }
+  .mast{ max-width:840px; margin:0 auto 28px; }
+  .eyebrow{ font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent); margin:0 0 10px; }
+  h1{ font-family:'Space Grotesk',sans-serif; font-size:28px; margin:0 0 6px; }
+  .mast-sub{ font-size:13px; color:var(--ink-dim); }
+
+  .panel{ max-width:840px; margin:0 auto; background:var(--panel); border:1px solid var(--hairline); border-radius:var(--radius); overflow:hidden; }
+  .panel-head{ display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--hairline); }
+  .panel-head span{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-dim); }
+
+  .row{ display:flex; align-items:center; gap:14px; padding:14px 20px; border-bottom:1px solid var(--hairline); }
+  .row:last-child{ border-bottom:none; }
+  .row-name{ font-weight:600; font-size:14px; flex:1; }
+  .row-meta{ font-size:12px; color:var(--ink-dim); }
+  .pill{ font-family:'IBM Plex Mono',monospace; font-size:10.5px; letter-spacing:.05em; text-transform:uppercase;
+    padding:4px 9px; border-radius:20px; margin-right:6px; }
+  .pill.PRESENT{ background:var(--ok-dim); color:var(--ok); }
+  .pill.ABSENT{ background:var(--absent-dim); color:var(--absent); }
+  .pill.NOT_MARKED{ background:var(--panel-2); color:var(--ink-dim); }
+
+  .act{ border:none; border-radius:6px; padding:8px 12px; font-family:'Space Grotesk',sans-serif;
+    font-weight:600; font-size:12px; cursor:pointer; margin-left:6px; }
+  .act.present{ background:var(--ok); color:#101a14; }
+  .act.absent{ background:var(--absent); color:#1c100b; }
+
+  .empty{ max-width:840px; margin:60px auto; text-align:center; color:var(--ink-dim); font-size:14px; }
+  .empty strong{ display:block; color:var(--ink); font-family:'Space Grotesk',sans-serif; font-size:18px; margin-bottom:8px; }
+</style>
+</head>
+<body>
+
+  <% if (!classInfo) { %>
+    <div class="empty">
+      <strong><%= teacher.name %></strong>
+      You haven't been assigned to a class yet. Ask your school administrator to assign you to one.
+    </div>
+  <% } else { %>
+    <div class="mast">
+      <p class="eyebrow">DecyfoGate · Class Teacher</p>
+      <h1><%= classInfo.name %></h1>
+      <p class="mast-sub">Class teacher: <%= teacher.name %> · <%= students.length %> student<%= students.length === 1 ? '' : 's' %> on roster</p>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <strong style="font-family:'Space Grotesk',sans-serif; font-size:15px;">Today's roll call</strong>
+        <span id="dateLabel"></span>
+      </div>
+
+      <% students.forEach(s => { %>
+        <div class="row" id="student-<%= s.id %>">
+          <span class="row-name">👤 <%= s.name %></span>
+          <span class="row-meta"><%= s.parent_name %> · <%= s.phone_number %></span>
+          <span class="pill <%= s.today_status || 'NOT_MARKED' %>" id="pill-<%= s.id %>"><%= s.today_status || 'NOT MARKED' %></span>
+          <button class="act present" onclick="mark('<%= s.id %>','Present')">Present</button>
+          <button class="act absent" onclick="mark('<%= s.id %>','Absent')">Absent</button>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+
+  <script>
+    document.getElementById('dateLabel') && (document.getElementById('dateLabel').textContent = new Date().toDateString());
+
+    async function mark(studentId, status){
+      const res = await fetch('/api/school/attendance', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ studentId, status })
+      });
+      const data = await res.json();
+      if(data.success){
+        const pill = document.getElementById('pill-' + studentId);
+        pill.textContent = status.toUpperCase();
+        pill.className = 'pill ' + status.toUpperCase();
+      }
+    }
+  </script>
+
+</body>
+</html>
