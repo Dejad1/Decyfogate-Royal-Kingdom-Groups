@@ -49,13 +49,21 @@ export function buildNotYetArrivedMessage(studentName: string, schoolName: strin
 // Deliberately distinct wording from buildAttendanceMessage's morning
 // ping (brief section 9), so a guardian scanning their messages can tell
 // an arrival confirmation from a departure confirmation at a glance.
+//
+// Record-and-notify, not pre-register-and-gate: pickupPersonName is
+// whatever the Form Teacher typed, with no check against a known list.
+// `matched` is purely informational (set only when the name was chosen
+// from the guardian shortlist) and decides whether this message carries
+// the "not on your usual contact list" safety note -- the note is the
+// entire safety mechanism here, since nothing upstream blocks the entry.
 export function buildDismissalMessage(
   type: "PICKUP" | "SELF_DISMISSED",
   studentName: string,
   schoolName: string,
   time: Date,
-  pickedUpByName: string | null,
-  pickedUpByRelationship: string | null,
+  pickupPersonName: string | null,
+  pickupPersonRelationship: string | null,
+  matched: boolean,
   pickFn: PickFn = Math.random
 ): string {
   const stamp = time.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
@@ -65,9 +73,10 @@ export function buildDismissalMessage(
       `${schoolName}: ${studentName} was dismissed and departed unaccompanied at ${stamp} today.`,
     ]);
   }
-  const who = pickedUpByRelationship ? `${pickedUpByName} (${pickedUpByRelationship})` : pickedUpByName ?? "an authorized pickup person";
-  return pick(pickFn, [
-    `${schoolName}: ${studentName} has been picked up by ${who} at ${stamp} today.`,
+  const who = pickupPersonRelationship ? `${pickupPersonName} (${pickupPersonRelationship})` : pickupPersonName ?? "someone";
+  const base = pick(pickFn, [
+    `${schoolName}: ${studentName} was picked up by ${who} at ${stamp} today.`,
     `${schoolName}: ${studentName} was collected by ${who} at ${stamp} today.`,
   ]);
+  return matched ? base : `${base} This person is not on your usual contact list -- please reach the school if this is unexpected.`;
 }

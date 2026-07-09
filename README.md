@@ -185,39 +185,44 @@ Built as an addition on top of the existing attendance/guardian/
 notification infrastructure, per instruction -- no existing route, role,
 or notification trigger was changed to accommodate it.
 
-**Schema additions** (`AuthorizedPickupPerson`, `DismissalRecord`,
-`DismissalEscalation`, plus a `DISMISSAL_CONFIRMED` notification trigger
-and a nullable `dismissalRecordId` on `NotificationLog`, mirroring how
-`attendanceRecordId` already works) -- proposed and confirmed against the
-full brief text before any migration was written; see the corrected plan
-in the project history for what changed between the first (fragment-based)
-proposal and the final one once the full Section 9 text was available.
+**Design: record-and-notify, not pre-register-and-gate.** An earlier pass
+built pre-registered `AuthorizedPickupPerson` records plus a hard-block
+`DismissalEscalation` flow that routed unrecognized names to a School
+Admin inbox. That design was explicitly reversed: a Form Teacher can name
+*any* pickup person at the moment of dismissal, with no advance
+authorization step and nothing that blocks the entry. `DismissalRecord`
+carries freeform `pickupPersonName` (required for `PICKUP`), optional
+`pickupPersonRelationship`/`pickupPersonPhone`, and an optional
+`matchedGuardianId` -- set automatically only when the typed name matches
+a known guardian, and used purely to pick notification wording, never to
+gate anything. `AuthorizedPickupPerson` and `DismissalEscalation` do not
+exist in the schema.
 
 **The level rule, enforced server-side, not just in the UI**: Nursery/
-Primary students can only be dismissed via `PICKUP` against an authorized
-guardian or a same-day `AuthorizedPickupPerson` -- `SELF_DISMISSED` is
-rejected outright by the API. Secondary students can use either.
+Primary students can only be dismissed via `PICKUP` with a named
+person -- `SELF_DISMISSED` is rejected outright by the API. Secondary
+students can use either.
 
-**The safeguarding requirement**: if the person collecting a child isn't
-on the authorized list, the Form Teacher cannot log a dismissal for them
-through the normal flow at all. The UI hard-stops into an escalation
-form instead (`DismissalEscalation`, status `OPEN`/`RESOLVED`), visible to
-the School Admin under a new "Pickup escalations" tab. Resolving an
-escalation never auto-authorizes anyone -- that stays a human decision.
+**The safeguarding requirement lives entirely in the notification text**,
+not in any UI or API block. Every dismissal goes through immediately.
+Guardians are notified either way:
+- Matched guardian: "{student} was picked up by {name} ({relationship})
+  at {time} today."
+- No match: "{student} was picked up by {name} ({relationship}) at
+  {time} today. This person is not on your usual contact list -- please
+  reach the school if this is unexpected."
 
-**Notification wording is deliberately distinct** from the morning
-attendance ping (e.g. "...was collected by Gift Ezeh (Mother) at 13:48
-today" vs. "...has left the school premises at 13:48 today" for
-self-dismissal), reusing the exact same guardian fan-out and queued
-SMS/WhatsApp simulation pipeline as attendance.
+There is no School Admin escalations tab -- there is nothing left to
+escalate.
 
-**Verified for real** against the seeded dataset: logged a pickup as a
-Nursery/Primary Form Teacher and confirmed the guardian notification
-fired with wording distinct from the attendance message; confirmed the
-"Self-dismissed" option is entirely absent from the UI for Nursery/Primary
-(0 buttons rendered) while present for Secondary (20/20 rendered);
-self-dismissed a Secondary student; escalated an unrecognized pickup
-attempt and confirmed the pupil stayed un-dismissed and the escalation
-appeared in the School Admin's inbox for resolution. Checked on both web
+**Verified for real** against the seeded dataset after this correction:
+logged a pickup for a Nursery/Primary student with a name that has no
+guardian match and confirmed it went through immediately (no block, no
+escalation UI) with the "not on your usual contact list" notification
+queued to both guardians; logged a second pickup via the guardian
+quick-fill shortlist and confirmed the notification omitted the warning;
+confirmed Nursery/Primary self-dismissal is still rejected by the API and
+Secondary self-dismissal still succeeds; confirmed the School Admin
+dashboard no longer mentions escalations anywhere. Checked on both web
 (real Chromium) and mobile (`expo start --web` + Chromium, same sandbox
-constraint as Phase 4). Zero console errors on either platform.
+constraint as Phase 4).

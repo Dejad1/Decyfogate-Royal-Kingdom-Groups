@@ -13,13 +13,16 @@ interface RosterStudent {
 interface DismissalRecordRow {
   studentId: string;
   type: DismissalType;
-  pickedUpByName: string | null;
-  pickedUpByRelationship: string | null;
+  pickupPersonName: string | null;
+  pickupPersonRelationship: string | null;
+  matchedGuardianId: string | null;
 }
 
-interface AuthorizedListResponse {
-  guardians: { guardianId: string; fullName: string; relationship: string; phone: string }[];
-  oneOffPeopleToday: { id: string; fullName: string; relationship: string; phone: string | null }[];
+interface GuardianShortlistEntry {
+  guardianId: string;
+  fullName: string;
+  relationship: string;
+  phone: string;
 }
 
 function todayIso() {
@@ -57,8 +60,8 @@ export function DismissalPanel({
         <p className="text-sm font-semibold text-slate-900">End-of-day dismissal</p>
         <p className="mt-1 text-xs text-slate-500">
           {schoolType === SchoolType.SECONDARY
-            ? "Select who picked up each pupil, or mark them self-dismissed."
-            : "Every pupil must be marked with who picked them up -- self-dismissal is not available at this level."}
+            ? "Record who picked up each pupil, or mark them self-dismissed."
+            : "Every pupil must be recorded with who picked them up -- self-dismissal is not available at this level."}
         </p>
       </div>
       <ul className="divide-y divide-slate-100">
@@ -76,8 +79,8 @@ export function DismissalPanel({
                     <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
                       {record.type === "SELF_DISMISSED"
                         ? "Self-dismissed"
-                        : `Picked up by ${record.pickedUpByName ?? "?"}${
-                            record.pickedUpByRelationship ? ` (${record.pickedUpByRelationship})` : ""
+                        : `Picked up by ${record.pickupPersonName ?? "?"}${
+                            record.pickupPersonRelationship ? ` (${record.pickupPersonRelationship})` : ""
                           }`}
                     </span>
                   ) : (
@@ -101,7 +104,7 @@ export function DismissalPanel({
                 </div>
               </div>
               {expandedFor === student.id && !record && (
-                <PickupPicker
+                <PickupForm
                   studentId={student.id}
                   classUnitId={classUnitId}
                   onDone={() => {
@@ -127,7 +130,7 @@ export function DismissalPanel({
   }
 }
 
-function PickupPicker({
+function PickupForm({
   studentId,
   classUnitId,
   onDone,
@@ -139,37 +142,54 @@ function PickupPicker({
   onCancel: () => void;
 }) {
   const { api } = useAuth();
-  const [list, setList] = useState<AuthorizedListResponse | null>(null);
-  const [mode, setMode] = useState<"pick" | "add-visitor" | "escalate">("pick");
+  const [shortlist, setShortlist] = useState<GuardianShortlistEntry[] | null>(null);
+  const [name, setName] = useState("");
+  const [relationship, setRelationship] = useState("");
+  const [phone, setPhone] = useState("");
+  const [matchedGuardianId, setMatchedGuardianId] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [visitorName, setVisitorName] = useState("");
-  const [visitorRelationship, setVisitorRelationship] = useState("");
-  const [visitorPhone, setVisitorPhone] = useState("");
-
-  const [escalateName, setEscalateName] = useState("");
-  const [escalatePhone, setEscalatePhone] = useState("");
-  const [escalateNote, setEscalateNote] = useState("");
-  const [escalated, setEscalated] = useState(false);
-
-  const loadList = async () => {
-    const data = await api<AuthorizedListResponse>(`/dismissal/authorized-list?studentId=${studentId}&date=${todayIso()}`);
-    setList(data);
-  };
-
   useEffect(() => {
-    loadList();
+    api<GuardianShortlistEntry[]>(`/dismissal/guardian-shortlist?studentId=${studentId}`).then(setShortlist);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentId]);
 
-  async function confirmPickup(guardianId?: string, oneOffPickupPersonId?: string) {
+  function pickFromShortlist(g: GuardianShortlistEntry) {
+    setName(g.fullName);
+    setRelationship(g.relationship);
+    setPhone(g.phone);
+    setMatchedGuardianId(g.guardianId);
+  }
+
+  // Free typing always overrides the shortlist match -- a name only counts
+  // as "matched" when it still equals the guardian that was clicked.
+  function onNameChange(value: string) {
+    setName(value);
+    setMatchedGuardianId((prev) => {
+      if (!prev) return prev;
+      const match = shortlist?.find((g) => g.guardianId === prev);
+      return match && match.fullName === value ? prev : undefined;
+    });
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
     setSubmitting(true);
     setError(null);
     try {
       await api("/dismissal", {
         method: "POST",
-        body: { studentId, classUnitId, date: todayIso(), type: "PICKUP", guardianId, oneOffPickupPersonId },
+        body: {
+          studentId,
+          classUnitId,
+          date: todayIso(),
+          type: "PICKUP",
+          pickupPersonName: name.trim(),
+          pickupPersonRelationship: relationship.trim() || undefined,
+          pickupPersonPhone: phone.trim() || undefined,
+          matchedGuardianId,
+        },
       });
       onDone();
     } catch (err) {
@@ -179,192 +199,66 @@ function PickupPicker({
     }
   }
 
-  async function addVisitor(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api("/dismissal/one-off-pickup-person", {
-        method: "POST",
-        body: { studentId, fullName: visitorName, relationship: visitorRelationship, phone: visitorPhone || undefined, date: todayIso() },
-      });
-      setMode("pick");
-      setVisitorName("");
-      setVisitorRelationship("");
-      setVisitorPhone("");
-      await loadList();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add visitor");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  async function submitEscalation(e: React.FormEvent) {
-    e.preventDefault();
-    setSubmitting(true);
-    setError(null);
-    try {
-      await api("/dismissal/escalate", {
-        method: "POST",
-        body: {
-          studentId,
-          classUnitId,
-          attemptedPickupPersonName: escalateName,
-          attemptedPickupPersonPhone: escalatePhone || undefined,
-          note: escalateNote || undefined,
-        },
-      });
-      setEscalated(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to escalate");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
   return (
     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
       {error && <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</p>}
 
-      {mode === "pick" && (
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Authorized guardians</p>
-            <div className="flex flex-wrap gap-2">
-              {list?.guardians.map((g) => (
-                <button
-                  key={g.guardianId}
-                  disabled={submitting}
-                  onClick={() => confirmPickup(g.guardianId, undefined)}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900 disabled:opacity-50"
-                >
-                  {g.fullName} ({g.relationship})
-                </button>
-              ))}
-              {list && list.guardians.length === 0 && <p className="text-xs text-slate-400">No guardians on file.</p>}
-            </div>
-          </div>
-
-          {list && list.oneOffPeopleToday.length > 0 && (
-            <div>
-              <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Authorized today only</p>
-              <div className="flex flex-wrap gap-2">
-                {list.oneOffPeopleToday.map((p) => (
-                  <button
-                    key={p.id}
-                    disabled={submitting}
-                    onClick={() => confirmPickup(undefined, p.id)}
-                    className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:border-amber-500 disabled:opacity-50"
-                  >
-                    {p.fullName} ({p.relationship})
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center gap-4 border-t border-slate-200 pt-3 text-xs">
-            <button onClick={() => setMode("add-visitor")} className="font-medium text-slate-700 underline underline-offset-2">
-              + Add a visitor pickup for today
-            </button>
-            <button onClick={() => setMode("escalate")} className="font-medium text-red-700 underline underline-offset-2">
-              Person not on this list
-            </button>
-            <button onClick={onCancel} className="ml-auto text-slate-400">
-              Cancel
-            </button>
+      {shortlist && shortlist.length > 0 && (
+        <div className="mb-3">
+          <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">Quick fill</p>
+          <div className="flex flex-wrap gap-2">
+            {shortlist.map((g) => (
+              <button
+                key={g.guardianId}
+                type="button"
+                onClick={() => pickFromShortlist(g)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-900"
+              >
+                {g.fullName} ({g.relationship})
+              </button>
+            ))}
           </div>
         </div>
       )}
 
-      {mode === "add-visitor" && (
-        <form onSubmit={addVisitor} className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
-            Authorize a visitor for today only (not added as a permanent guardian)
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            <input
-              value={visitorName}
-              onChange={(e) => setVisitorName(e.target.value)}
-              required
-              placeholder="Full name"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-            />
-            <input
-              value={visitorRelationship}
-              onChange={(e) => setVisitorRelationship(e.target.value)}
-              required
-              placeholder="Relationship"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-            />
-            <input
-              value={visitorPhone}
-              onChange={(e) => setVisitorPhone(e.target.value)}
-              placeholder="Phone (optional)"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-            />
-          </div>
-          <div className="flex gap-3 text-xs">
-            <button type="submit" disabled={submitting} className="rounded-lg bg-slate-900 px-3 py-1.5 font-semibold text-white disabled:opacity-50">
-              Authorize for today
-            </button>
-            <button type="button" onClick={() => setMode("pick")} className="text-slate-500">
-              Back
-            </button>
-          </div>
-        </form>
-      )}
-
-      {mode === "escalate" && !escalated && (
-        <form onSubmit={submitEscalation} className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-red-700">
-            This person is not on the authorized list. This will not dismiss the pupil -- it flags the School Admin
-            to review before anyone is released to them.
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <input
-              value={escalateName}
-              onChange={(e) => setEscalateName(e.target.value)}
-              required
-              placeholder="Their name"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-            />
-            <input
-              value={escalatePhone}
-              onChange={(e) => setEscalatePhone(e.target.value)}
-              placeholder="Phone (optional)"
-              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
-            />
-          </div>
-          <textarea
-            value={escalateNote}
-            onChange={(e) => setEscalateNote(e.target.value)}
-            placeholder="Note for the School Admin (optional)"
-            rows={2}
-            className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+      <form onSubmit={submit} className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+          Who is picking up this pupil? Any name is accepted -- no advance authorization needed.
+        </p>
+        <div className="grid grid-cols-3 gap-2">
+          <input
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            required
+            placeholder="Full name"
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
           />
-          <div className="flex gap-3 text-xs">
-            <button type="submit" disabled={submitting} className="rounded-lg bg-red-600 px-3 py-1.5 font-semibold text-white disabled:opacity-50">
-              Escalate to School Admin
-            </button>
-            <button type="button" onClick={() => setMode("pick")} className="text-slate-500">
-              Back
-            </button>
-          </div>
-        </form>
-      )}
-
-      {mode === "escalate" && escalated && (
-        <div className="space-y-2">
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Escalation sent to the School Admin. This pupil remains not dismissed until it&apos;s resolved.
-          </p>
-          <button onClick={onCancel} className="text-xs text-slate-500">
-            Close
+          <input
+            value={relationship}
+            onChange={(e) => setRelationship(e.target.value)}
+            placeholder="Relationship (optional)"
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+          />
+          <input
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            placeholder="Phone (optional)"
+            className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+          />
+        </div>
+        <div className="flex gap-3 text-xs">
+          <button
+            type="submit"
+            disabled={submitting || !name.trim()}
+            className="rounded-lg bg-slate-900 px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+          >
+            Confirm pickup
+          </button>
+          <button type="button" onClick={onCancel} className="text-slate-500">
+            Cancel
           </button>
         </div>
-      )}
+      </form>
     </div>
   );
 }

@@ -90,8 +90,9 @@ export async function queueDismissalNotification(params: {
   studentName: string;
   schoolName: string;
   type: "PICKUP" | "SELF_DISMISSED";
-  pickedUpByName: string | null;
-  pickedUpByRelationship: string | null;
+  pickupPersonName: string | null;
+  pickupPersonRelationship: string | null;
+  matched: boolean;
   dismissalRecordId: string;
 }) {
   const guardianLinks = await prisma.studentGuardian.findMany({
@@ -105,8 +106,9 @@ export async function queueDismissalNotification(params: {
     params.studentName,
     params.schoolName,
     now,
-    params.pickedUpByName,
-    params.pickedUpByRelationship
+    params.pickupPersonName,
+    params.pickupPersonRelationship,
+    params.matched
   );
 
   const created = await Promise.all(

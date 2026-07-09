@@ -6,11 +6,9 @@
 // standard `fetch` global, which both DOM and React Native provide, so
 // nothing here is web- or native-specific.
 import {
-  AddOneOffPickupPersonRequest,
   AttendanceEntryType,
   AttendanceStatus,
   DismissalType,
-  EscalateUnauthorizedPickupRequest,
   LogDismissalRequest,
   LoginResponse,
   MarkAttendanceRequest,
@@ -97,30 +95,19 @@ export interface NotificationLogRow {
   guardian: { fullName: string; phone: string };
 }
 
-export interface AuthorizedGuardian {
+export interface GuardianShortlistEntry {
   guardianId: string;
   fullName: string;
   relationship: string;
   phone: string;
 }
 
-export interface AuthorizedOneOffPerson {
-  id: string;
-  fullName: string;
-  relationship: string;
-  phone: string | null;
-}
-
-export interface AuthorizedPickupListResponse {
-  guardians: AuthorizedGuardian[];
-  oneOffPeopleToday: AuthorizedOneOffPerson[];
-}
-
 export interface DismissalRecordRow {
   studentId: string;
   type: DismissalType;
-  pickedUpByName: string | null;
-  pickedUpByRelationship: string | null;
+  pickupPersonName: string | null;
+  pickupPersonRelationship: string | null;
+  matchedGuardianId: string | null;
 }
 
 /**
@@ -162,12 +149,8 @@ export class DecyfogateApiClient {
     return this.request<NotificationLogRow[]>(`/notifications/logs?schoolId=${schoolId}`);
   }
 
-  getAuthorizedPickupList(studentId: string, date: string) {
-    return this.request<AuthorizedPickupListResponse>(`/dismissal/authorized-list?studentId=${studentId}&date=${date}`);
-  }
-
-  addOneOffPickupPerson(input: AddOneOffPickupPersonRequest) {
-    return this.request<AuthorizedOneOffPerson>("/dismissal/one-off-pickup-person", { method: "POST", body: input });
+  getGuardianShortlist(studentId: string) {
+    return this.request<GuardianShortlistEntry[]>(`/dismissal/guardian-shortlist?studentId=${studentId}`);
   }
 
   logDismissal(input: LogDismissalRequest) {
@@ -176,9 +159,5 @@ export class DecyfogateApiClient {
 
   getTodayDismissals(classUnitId: string) {
     return this.request<DismissalRecordRow[]>(`/dismissal/today?classUnitId=${classUnitId}`);
-  }
-
-  escalateUnauthorizedPickup(input: EscalateUnauthorizedPickupRequest) {
-    return this.request<{ id: string }>("/dismissal/escalate", { method: "POST", body: input });
   }
 }

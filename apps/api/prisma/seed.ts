@@ -66,8 +66,6 @@ async function wipe() {
   await prisma.$transaction([
     prisma.notificationLog.deleteMany(),
     prisma.dismissalRecord.deleteMany(),
-    prisma.dismissalEscalation.deleteMany(),
-    prisma.authorizedPickupPerson.deleteMany(),
     prisma.attendanceRecord.deleteMany(),
     prisma.classSubjectTeacher.deleteMany(),
     prisma.studentGuardian.deleteMany(),
