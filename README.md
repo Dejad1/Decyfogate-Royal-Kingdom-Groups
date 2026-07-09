@@ -60,6 +60,64 @@ Teachers, DecyfoTech internal roles) shares the password
 `Decyfogate@2026` — printed again at the end of the seed run. This is only
 safe because the data is entirely simulated demo data.
 
+## Deploying (free-tier demo hosting)
+
+The API + Postgres go to **Railway**, the web app to **Vercel** — both have
+free tiers sufficient for a demo/pilot. Mobile stays on `expo start` for now
+(no app store submission at this stage).
+
+### API + Postgres on Railway
+
+1. Create a Railway project, add a **Postgres** database from the Railway
+   template gallery.
+2. Add a second service from this GitHub repo. Railway auto-detects
+   `railway.json` at the repo root, which points it at `apps/api/Dockerfile`
+   (built with the whole monorepo as context, since the API depends on the
+   `@decyfogate/shared-types` workspace package) and configures a
+   `/health` healthcheck.
+3. Set these environment variables on the API service:
+   - `DATABASE_URL` — reference the Postgres service's connection string
+     (Railway's variable reference picker does this for you:
+     `${{Postgres.DATABASE_URL}}`).
+   - `JWT_SECRET` — a long random value (e.g. `openssl rand -hex 32`).
+   - `JWT_EXPIRES_IN` — `12h` (optional, this is the default).
+4. Deploy. `docker-entrypoint.sh` runs `prisma migrate deploy` before
+   starting the server on every boot, so the schema is applied
+   automatically — no manual migration step.
+5. Seed the demo data once, from a machine with this repo checked out and
+   `pnpm install` run (the seed script's dependencies, like `tsx` and
+   `faker`, are intentionally not in the production image to keep it
+   lean):
+   ```bash
+   DATABASE_URL="<railway Postgres public connection string>" \
+     pnpm --filter @decyfogate/api prisma:seed
+   ```
+   Re-run any time to reset the demo back to its starting state — the seed
+   is idempotent (wipes and regenerates from a fixed random seed).
+6. Note the API's public URL (`https://<service>.up.railway.app`).
+
+### Web on Vercel
+
+1. Import this repo as a new Vercel project.
+2. Set **Root Directory** to `apps/web` — Vercel auto-detects the pnpm
+   workspace at the repo root and installs from there.
+3. Framework preset: Next.js (auto-detected). Build/output settings: leave
+   as default.
+4. Set the environment variable `NEXT_PUBLIC_API_URL` to the Railway API's
+   public URL from above.
+5. Deploy. Vercel gives you a `https://<project>.vercel.app` URL.
+
+No CORS configuration is needed on the API side — `cors()` is already
+unrestricted (`apps/api/src/app.ts`), appropriate for a demo reachable from
+a free preview domain that changes per deploy.
+
+### Verifying the deploy
+
+`GET https://<api>.up.railway.app/health` should return `{"status":"ok"}`.
+Sign in on the deployed web app with any seeded account (e.g.
+`zulaihat.adeniran.2@royalkingdomprimary.edu.ng` / `Decyfogate@2026` for a
+School Admin) once the seed step has run.
+
 ## What's real vs. simulated
 
 - **Real**: Postgres schema, JWT auth, role-based authorization, attendance
