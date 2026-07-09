@@ -10,6 +10,7 @@ interface AuthContextValue {
   loading: boolean;
   client: DecyfogateApiClient;
   login: (email: string, password: string) => Promise<void>;
+  guardianLogin: (phone: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -48,6 +49,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(result));
   }, []);
 
+  const guardianLogin = useCallback(async (phone: string, password: string) => {
+    const result = await createClient(null).guardianLogin(phone, password);
+    setUser(result.user);
+    setToken(result.token);
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(result));
+  }, []);
+
   const logout = useCallback(async () => {
     setUser(null);
     setToken(null);
@@ -57,7 +65,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const client = useMemo(() => createClient(token), [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, client, login, logout }}>{children}</AuthContext.Provider>
+    <AuthContext.Provider value={{ user, token, loading, client, login, guardianLogin, logout }}>
+      {children}
+    </AuthContext.Provider>
   );
 }
 

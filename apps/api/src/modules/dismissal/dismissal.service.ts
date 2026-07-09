@@ -127,6 +127,7 @@ export async function logDismissal(actor: AuthTokenPayload, input: LogDismissalI
     studentId: student.id,
     studentName: student.fullName,
     schoolName: school.name,
+    whatsappEnabled: school.whatsappEnabled,
     type: input.type,
     pickupPersonName,
     pickupPersonRelationship,

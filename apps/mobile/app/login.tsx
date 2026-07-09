@@ -14,19 +14,32 @@ import { ApiError } from "@decyfogate/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { colors } from "@/lib/theme";
 
+type Mode = "staff" | "guardian";
+
 export default function LoginScreen() {
-  const { login } = useAuth();
+  const { login, guardianLogin } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const [mode, setMode] = useState<Mode>("staff");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  function switchMode(next: Mode) {
+    setMode(next);
+    setIdentifier("");
+    setError(null);
+  }
 
   async function handleSubmit() {
     setError(null);
     setSubmitting(true);
     try {
-      await login(email.trim(), password);
+      if (mode === "staff") {
+        await login(identifier.trim(), password);
+      } else {
+        await guardianLogin(identifier.trim(), password);
+      }
       router.replace("/(app)/dashboard");
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
@@ -45,18 +58,37 @@ export default function LoginScreen() {
           <Text style={styles.logoText}>DG</Text>
         </View>
         <Text style={styles.title}>DecyfoGate for Schools</Text>
-        <Text style={styles.subtitle}>Secure sign-in for school staff</Text>
+        <Text style={styles.subtitle}>
+          {mode === "staff" ? "Secure sign-in for school staff" : "Sign in to follow your child's day"}
+        </Text>
+      </View>
+
+      <View style={styles.modeToggle}>
+        <Pressable
+          onPress={() => switchMode("staff")}
+          style={[styles.modeButton, mode === "staff" && styles.modeButtonActive]}
+        >
+          <Text style={[styles.modeButtonText, mode === "staff" && styles.modeButtonTextActive]}>School Staff</Text>
+        </Pressable>
+        <Pressable
+          onPress={() => switchMode("guardian")}
+          style={[styles.modeButton, mode === "guardian" && styles.modeButtonActive]}
+        >
+          <Text style={[styles.modeButtonText, mode === "guardian" && styles.modeButtonTextActive]}>
+            Parent/Guardian
+          </Text>
+        </Pressable>
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.label}>Email address</Text>
+        <Text style={styles.label}>{mode === "staff" ? "Email address" : "Phone number"}</Text>
         <TextInput
-          value={email}
-          onChangeText={setEmail}
+          value={identifier}
+          onChangeText={setIdentifier}
           autoCapitalize="none"
           autoCorrect={false}
-          keyboardType="email-address"
-          placeholder="you@royalkingdomcollege.edu.ng"
+          keyboardType={mode === "staff" ? "email-address" : "phone-pad"}
+          placeholder={mode === "staff" ? "you@royalkingdomcollege.edu.ng" : "0803 123 4567"}
           placeholderTextColor={colors.textMuted}
           style={styles.input}
         />
@@ -79,8 +111,8 @@ export default function LoginScreen() {
 
         <Pressable
           onPress={handleSubmit}
-          disabled={submitting || !email || !password}
-          style={[styles.button, (submitting || !email || !password) && styles.buttonDisabled]}
+          disabled={submitting || !identifier || !password}
+          style={[styles.button, (submitting || !identifier || !password) && styles.buttonDisabled]}
         >
           {submitting ? <ActivityIndicator color={colors.navy} /> : <Text style={styles.buttonText}>Sign in</Text>}
         </Pressable>
@@ -98,7 +130,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 24,
   },
-  brandBlock: { alignItems: "center", marginBottom: 32 },
+  brandBlock: { alignItems: "center", marginBottom: 20 },
   logo: {
     width: 48,
     height: 48,
@@ -112,7 +144,20 @@ const styles = StyleSheet.create({
   },
   logoText: { color: colors.amber, fontWeight: "700", fontSize: 18 },
   title: { color: "white", fontSize: 18, fontWeight: "600" },
-  subtitle: { color: "#94A3B8", fontSize: 13, marginTop: 4 },
+  subtitle: { color: "#94A3B8", fontSize: 13, marginTop: 4, textAlign: "center" },
+  modeToggle: {
+    flexDirection: "row",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    padding: 3,
+    marginBottom: 16,
+  },
+  modeButton: { flex: 1, paddingVertical: 9, borderRadius: 8, alignItems: "center" },
+  modeButtonActive: { backgroundColor: colors.amber },
+  modeButtonText: { color: "#94A3B8", fontSize: 12, fontWeight: "600" },
+  modeButtonTextActive: { color: colors.navy },
   card: {
     backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 16,

@@ -8,9 +8,9 @@ for full product context.
 This is a client/server monorepo (Turborepo + pnpm workspaces) so the same
 API serves a Next.js web app and an Expo (React Native) mobile app.
 **Phases 1-6 of the brief's delivery plan are built, plus Section 9
-(Dismissal & Pickup Confirmation) and Section 8 (Secondary end-of-day
-digest)** — see "Status" below. The full delivery plan plus both approved
-additions are complete.
+(Dismissal & Pickup Confirmation), Section 8 (Secondary end-of-day digest),
+and Section 11 (Parent/Guardian Companion App)** — see "Status" below. The
+full delivery plan plus all three approved additions are complete.
 
 ## Layout
 
@@ -142,8 +142,9 @@ School Admin) once the seed step has run.
 5. ✅ Marketing landing page — built as part of Phase 3 (see below)
 6. ✅ Polish pass — notification simulation realism (see below)
 
-Plus **Section 9: Dismissal & Pickup Confirmation** and **Section 8:
-Secondary end-of-day digest** (both approved and built — see below).
+Plus **Section 9: Dismissal & Pickup Confirmation**, **Section 8: Secondary
+end-of-day digest**, and **Section 11: Parent/Guardian Companion App** (all
+three approved and built — see below).
 
 ### Phase 3 notes
 
@@ -337,3 +338,70 @@ a routine tag (`DISRUPTIVE`) never raises an alert; confirmed the daily
 register rejects a behavior tag outright (400); confirmed the digest is
 rejected for the Nursery/Primary school (400). Checked on both web (real
 Chromium) and mobile (`expo start --web` + Chromium).
+
+### Section 11 notes (Parent/Guardian Companion App)
+
+Layered on top of every existing notification type, not a replacement --
+`ATTENDANCE_MARKED`, `DISMISSAL_CONFIRMED`, `NOT_YET_ARRIVED`,
+`BROADCAST`, and `END_OF_DAY_DIGEST` all now route through the same
+per-guardian channel resolution instead of a hardcoded SMS+WhatsApp pair.
+
+**Guardian auth reuses the existing User-style JWT infrastructure rather
+than a parallel system.** `Guardian` gained a `passwordHash`; logging in
+via `POST /auth/guardian-login` (phone + password) issues the exact same
+token shape as staff login (`signToken`/`AuthTokenPayload`), just with
+`role: GUARDIAN` and `sub` pointing at a `Guardian.id` instead of a
+`User.id`, and `schoolId`/`groupId` left null since a guardian isn't
+scoped to one school. `requireRole(Role.GUARDIAN)`, `/auth/me`, and every
+other piece of existing auth middleware work unchanged. Guardian-only
+endpoints live in a new module (`GET /guardian/children`, `GET
+/guardian/notifications`, `GET`+`PATCH /guardian/preferences`, `POST
+/guardian/device-tokens`) -- read-only except for the guardian's own
+notification channel preference and device registration, per the brief's
+explicit non-goal of no parent-initiated actions beyond viewing.
+
+**Four channels, one gated per school, not globally.** `NotificationChannel`
+gained `PUSH` and `EMAIL` alongside `SMS`/`WHATSAPP`. `Guardian.
+preferredChannels` is what a guardian *wants* (defaults to `[SMS,
+WHATSAPP]`, the exact pre-Section-11 behavior, so a guardian who's never
+opened the Companion App sees zero change). A new `School.whatsappEnabled`
+flag is the per-school entitlement source -- deliberately simpler than
+restructuring the Group-scoped `Subscription`/billing model to be
+per-school, which is a bigger change than this feature needed. At
+send time, `notifications.service.ts`'s `resolveChannels` filters a
+guardian's wanted channels down to what's actually deliverable for *that
+specific* notification (`WHATSAPP` only survives if the message's own
+school has it enabled; `PUSH` only survives if the guardian has a
+registered device) and falls back to `SMS` if that ever empties the list,
+so nobody silently gets nothing. The seed data deliberately sets one
+school's `whatsappEnabled` to `true` and the other's to `false` (also
+respected by the historical attendance backfill, not just live sends) so
+the gating is demonstrable, not just theoretical.
+
+**Push and email are simulated, not real** -- there is no Firebase
+project or SendGrid/SES-class account wired up for this demo, consistent
+with SMS/WhatsApp already being simulated. A guardian's device token is a
+locally-generated opaque string, not a real FCM token, and dispatch goes
+through the exact same `simulateDispatch` QUEUED→SENT→DELIVERED pipeline
+as every other channel.
+
+**Mobile-only, per the brief** ("added to the monorepo's mobile app") --
+no web guardian portal. The existing sign-in screen gained a School
+Staff/Parent-Guardian toggle (phone instead of email for the guardian
+path); a new `GuardianScreen` covers linked children with today's
+attendance/dismissal status, notification history, and settings (device
+registration + channel preference multi-select, with `WHATSAPP` only
+appearing as an option when at least one linked child's school entitles
+it).
+
+**Verified for real** against the seeded dataset: logged in as a
+guardian with a child at the WhatsApp-disabled school and confirmed the
+settings screen offered Push/SMS/Email but not WhatsApp; registered a
+simulated device and enabled the Push channel; had that student's Form
+Teacher mark attendance and confirmed the resulting notification went out
+as SMS+PUSH only (no WhatsApp); confirmed a legacy guardian who never
+touched the app still gets the unchanged SMS+WhatsApp fan-out at a
+WhatsApp-entitled school; confirmed the historical backfill for the
+non-entitled school contains zero WhatsApp rows. Checked on mobile
+(`expo start --web` + Chromium) and confirmed zero regressions on web
+(existing NotificationsPanel now also renders PUSH/EMAIL rows correctly).

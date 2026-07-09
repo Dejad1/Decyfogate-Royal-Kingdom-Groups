@@ -14,6 +14,8 @@ const STATUS_STYLES: Record<NotificationLogRow["status"], { bg: string; text: st
 const CHANNEL_STYLES: Record<NotificationLogRow["channel"], { bg: string; text: string; label: string }> = {
   SMS: { bg: colors.skyBg, text: colors.sky, label: "SMS" },
   WHATSAPP: { bg: colors.greenBg, text: colors.green, label: "WhatsApp" },
+  PUSH: { bg: colors.violetBg, text: colors.violet, label: "Push" },
+  EMAIL: { bg: colors.amberBg, text: colors.amberDark, label: "Email" },
 };
 
 const TRIGGER_META: Record<NotificationLogRow["trigger"], { label: string; borderColor: string } | null> = {

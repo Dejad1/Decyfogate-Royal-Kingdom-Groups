@@ -3,6 +3,7 @@ import { Role } from "@decyfogate/shared-types";
 import { useAuth } from "@/lib/auth-context";
 import { FormTeacherScreen } from "@/components/FormTeacherScreen";
 import { SubjectTeacherScreen } from "@/components/SubjectTeacherScreen";
+import { GuardianScreen } from "@/components/GuardianScreen";
 import { colors } from "@/lib/theme";
 
 export default function DashboardScreen() {
@@ -11,6 +12,7 @@ export default function DashboardScreen() {
 
   if (user.role === Role.FORM_TEACHER) return <FormTeacherScreen />;
   if (user.role === Role.SUBJECT_TEACHER) return <SubjectTeacherScreen />;
+  if (user.role === Role.GUARDIAN) return <GuardianScreen />;
 
   return (
     <View style={styles.fallback}>

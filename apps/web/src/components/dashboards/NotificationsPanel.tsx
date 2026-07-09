@@ -5,7 +5,7 @@ import { useAuth } from "@/lib/auth-context";
 
 interface NotificationLogRow {
   id: string;
-  channel: "SMS" | "WHATSAPP";
+  channel: "SMS" | "WHATSAPP" | "PUSH" | "EMAIL";
   trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED" | "END_OF_DAY_DIGEST";
   message: string;
   status: "QUEUED" | "SENT" | "DELIVERED" | "FAILED";
@@ -23,9 +23,11 @@ const STATUS_STYLES: Record<NotificationLogRow["status"], string> = {
   FAILED: "bg-red-100 text-red-700",
 };
 
-const CHANNEL_STYLES: Record<NotificationLogRow["channel"], string> = {
-  SMS: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200",
-  WHATSAPP: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-200",
+const CHANNEL_STYLES: Record<NotificationLogRow["channel"], { className: string; label: string }> = {
+  SMS: { className: "bg-sky-50 text-sky-700 ring-1 ring-inset ring-sky-200", label: "SMS" },
+  WHATSAPP: { className: "bg-green-50 text-green-700 ring-1 ring-inset ring-green-200", label: "WhatsApp" },
+  PUSH: { className: "bg-violet-50 text-violet-700 ring-1 ring-inset ring-violet-200", label: "Push" },
+  EMAIL: { className: "bg-amber-50 text-amber-700 ring-1 ring-inset ring-amber-200", label: "Email" },
 };
 
 const TRIGGER_META: Record<NotificationLogRow["trigger"], { label: string; accent: string } | null> = {
@@ -163,8 +165,8 @@ export function NotificationsPanel({ classUnitId, schoolId }: { classUnitId?: st
                   </p>
                   <p className="mt-0.5 truncate text-xs text-slate-500">{log.message}</p>
                   <div className="mt-1.5 flex items-center gap-1.5">
-                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${CHANNEL_STYLES[log.channel]}`}>
-                      {log.channel === "SMS" ? "SMS" : "WhatsApp"}
+                    <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${CHANNEL_STYLES[log.channel].className}`}>
+                      {CHANNEL_STYLES[log.channel].label}
                     </span>
                     <span className="text-[11px] text-slate-400">{timeAgo(log.createdAt)}</span>
                   </div>

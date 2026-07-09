@@ -80,6 +80,7 @@ async function wipe() {
     prisma.user.deleteMany(),
     prisma.school.deleteMany(),
     prisma.group.deleteMany(),
+    prisma.guardianDeviceToken.deleteMany(),
     prisma.guardian.deleteMany(),
   ]);
 }
@@ -238,7 +239,12 @@ interface SeededStudent {
   levelName: string;
 }
 
-async function enrollStudents(unit: SeededUnit, admissionPrefix: string, admissionCounter: { n: number }): Promise<SeededStudent[]> {
+async function enrollStudents(
+  unit: SeededUnit,
+  admissionPrefix: string,
+  admissionCounter: { n: number },
+  guardianPasswordHash: string
+): Promise<SeededStudent[]> {
   const count = intBetween(rng, 8, 25);
   const students: SeededStudent[] = [];
 
@@ -276,7 +282,12 @@ async function enrollStudents(unit: SeededUnit, admissionPrefix: string, admissi
       const guardianFullName = `${guardianPerson.fullName.split(" ")[0]} ${surname}`;
 
       const guardian = await prisma.guardian.create({
-        data: { fullName: guardianFullName, phone: generatePhone(rng) },
+        // Section 11: every seeded guardian can sign into the Companion
+        // App with the same demo password as every other seeded account
+        // -- preferredChannels is left at its schema default ([SMS,
+        // WHATSAPP]), the exact pre-Section-11 behavior, until a guardian
+        // actually logs in and sets their own preference.
+        data: { fullName: guardianFullName, phone: generatePhone(rng), passwordHash: guardianPasswordHash },
       });
 
       await prisma.studentGuardian.create({
@@ -326,7 +337,8 @@ async function backfillAttendanceForSchool(
   formTeacherByUnit: Map<string, string>,
   teacherByUnitSubject: Map<string, string>,
   subjectIdByName: Map<string, string>,
-  schoolNameById: Map<string, string>
+  schoolNameById: Map<string, string>,
+  schoolWhatsappEnabledById: Map<string, boolean>
 ) {
   const studentNameById = new Map<string, string>();
   const schoolIdByUnit = new Map<string, string>();
@@ -392,7 +404,14 @@ async function backfillAttendanceForSchool(
     });
 
     if (recentDays.has(day.getTime())) {
-      await backfillNotificationsForDay(dailyRecords, day, studentNameById, schoolIdByUnit, schoolNameById);
+      await backfillNotificationsForDay(
+        dailyRecords,
+        day,
+        studentNameById,
+        schoolIdByUnit,
+        schoolNameById,
+        schoolWhatsappEnabledById
+      );
     }
   }
 
@@ -435,7 +454,8 @@ async function backfillNotificationsForDay(
   day: Date,
   studentNameById: Map<string, string>,
   schoolIdByUnit: Map<string, string>,
-  schoolNameById: Map<string, string>
+  schoolNameById: Map<string, string>,
+  schoolWhatsappEnabledById: Map<string, boolean>
 ) {
   const studentIds = dailyRecords.map((r) => r.studentId);
   const guardianLinks = await prisma.studentGuardian.findMany({
@@ -482,8 +502,19 @@ async function backfillNotificationsForDay(
     const schoolName = schoolNameById.get(schoolId) ?? "School";
     const message = buildAttendanceMessage(record.status as "PRESENT" | "LATE" | "ABSENT", studentName, schoolName, createdAt, rng);
 
+    // Every seeded guardian shares the same default preferredChannels
+    // ([SMS, WHATSAPP], the pre-Section-11 behavior) until they actually
+    // log into the Companion App, so applying the school's WhatsApp
+    // entitlement once here produces the identical result to resolving it
+    // per guardian -- matches notifications.service.ts's live routing
+    // without an extra query per guardian across 20 days of backfill.
+    const whatsappEnabled = schoolWhatsappEnabledById.get(schoolId) ?? true;
+    const channels = whatsappEnabled
+      ? [NotificationChannel.SMS, NotificationChannel.WHATSAPP]
+      : [NotificationChannel.SMS];
+
     for (const guardianId of guardianIds) {
-      for (const channel of [NotificationChannel.SMS, NotificationChannel.WHATSAPP]) {
+      for (const channel of channels) {
         const sentAt = new Date(createdAt.getTime() + intBetween(rng, 20, 90) * 1000);
         const deliveredAt = new Date(sentAt.getTime() + intBetween(rng, 40, 180) * 1000);
         rows.push({
@@ -544,6 +575,9 @@ async function main() {
       name: "Royal Kingdom Nursery and Primary School",
       type: SchoolType.NURSERY_PRIMARY,
       attendanceCutoffTime: "08:00",
+      // Section 11: one school entitled to WhatsApp, one not, so the demo
+      // can actually show the per-school gating working end to end.
+      whatsappEnabled: true,
     },
   });
   await createTerms(primarySchool.id);
@@ -565,6 +599,10 @@ async function main() {
       name: "Royal Kingdom College",
       type: SchoolType.SECONDARY,
       attendanceCutoffTime: "08:15",
+      // Deliberately not entitled, unlike the primary school -- lets the
+      // demo show a guardian at this school being offered push/SMS/email
+      // but not WhatsApp.
+      whatsappEnabled: false,
     },
   });
   await createTerms(collegeSchool.id);
@@ -611,10 +649,10 @@ async function main() {
   const collegeCounter = { n: 0 };
 
   for (const unit of primaryUnits) {
-    studentsByUnit.set(unit.id, await enrollStudents(unit, "RKN", primaryCounter));
+    studentsByUnit.set(unit.id, await enrollStudents(unit, "RKN", primaryCounter, passwordHash));
   }
   for (const unit of collegeUnits) {
-    studentsByUnit.set(unit.id, await enrollStudents(unit, "RKC", collegeCounter));
+    studentsByUnit.set(unit.id, await enrollStudents(unit, "RKC", collegeCounter, passwordHash));
   }
 
   const formTeacherByUnit = new Map<string, string>();
@@ -627,6 +665,10 @@ async function main() {
     [primarySchool.id, primarySchool.name],
     [collegeSchool.id, collegeSchool.name],
   ]);
+  const schoolWhatsappEnabledById = new Map([
+    [primarySchool.id, primarySchool.whatsappEnabled],
+    [collegeSchool.id, collegeSchool.whatsappEnabled],
+  ]);
 
   console.log(`Backfilling ${SCHOOL_DAYS_BACK} school days of attendance history...`);
   await backfillAttendanceForSchool(
@@ -635,7 +677,8 @@ async function main() {
     formTeacherByUnit,
     teacherByUnitSubject,
     subjectIdByName,
-    schoolNameById
+    schoolNameById,
+    schoolWhatsappEnabledById
   );
 
   const totalStudents = Array.from(studentsByUnit.values()).reduce((sum, arr) => sum + arr.length, 0);

@@ -20,11 +20,25 @@ identityRouter.post(
   })
 );
 
+const guardianLoginSchema = z.object({
+  phone: z.string().min(1),
+  password: z.string().min(1),
+});
+
+identityRouter.post(
+  "/guardian-login",
+  asyncHandler(async (req, res) => {
+    const { phone, password } = guardianLoginSchema.parse(req.body);
+    const result = await identityService.guardianLogin(phone, password);
+    res.json(result);
+  })
+);
+
 identityRouter.get(
   "/me",
   authenticate,
   asyncHandler(async (req, res) => {
-    const user = await identityService.getUserById(req.auth!.sub);
+    const user = await identityService.getMe(req.auth!);
     res.json(user);
   })
 );

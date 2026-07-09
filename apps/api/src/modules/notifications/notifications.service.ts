@@ -17,13 +17,14 @@ import {
 
 // Notifications are queued, never dispatched synchronously inside the
 // request that created them (per the build brief). For this demo there is
-// no live Termii/Twilio/WhatsApp Business API key, so dispatch is
-// simulated: a QUEUED row is created immediately, then flipped to
-// SENT and DELIVERED on a short, realistic delay so the "notifications
-// sent" panel shows a believable timestamped delivery lifecycle instead of
-// everything appearing instantly. A production deployment would swap
-// `simulateDispatch` for a real queue worker (BullMQ/Redis) calling the
-// SMS/WhatsApp provider.
+// no live Termii/Twilio/WhatsApp Business API key -- and, per Section 11,
+// no real Firebase/SendGrid-class provider either -- so dispatch is
+// simulated across all four channels identically: a QUEUED row is created
+// immediately, then flipped to SENT and DELIVERED on a short, realistic
+// delay so the "notifications sent" panel shows a believable timestamped
+// delivery lifecycle instead of everything appearing instantly. A
+// production deployment would swap `simulateDispatch` for a real queue
+// worker calling the relevant provider per channel.
 
 function simulateDispatch(notificationLogId: string) {
   const sentDelayMs = 400 + Math.random() * 800;
@@ -49,18 +50,84 @@ function simulateDispatch(notificationLogId: string) {
   }, deliveredDelayMs);
 }
 
+// Section 11's core routing rule: a guardian's preferredChannels is what
+// they *want* (defaults to [SMS, WHATSAPP], the exact pre-Section-11
+// behavior, for anyone who's never touched the Companion App), filtered
+// down to what's actually deliverable for *this* message --
+// WHATSAPP only survives if the school this notification is about has it
+// enabled, and PUSH only survives if the guardian has a registered
+// device. If that filtering empties the list (e.g. a guardian who only
+// wants WhatsApp, at a school that doesn't have it), fall back to SMS so
+// nobody silently gets nothing.
+function resolveChannels(
+  preferredChannels: NotificationChannel[],
+  whatsappEnabled: boolean,
+  hasDeviceToken: boolean
+): NotificationChannel[] {
+  const resolved = preferredChannels.filter((channel) => {
+    if (channel === NotificationChannel.WHATSAPP) return whatsappEnabled;
+    if (channel === NotificationChannel.PUSH) return hasDeviceToken;
+    return true;
+  });
+  return resolved.length > 0 ? resolved : [NotificationChannel.SMS];
+}
+
+interface GuardianForRouting {
+  guardianId: string;
+  preferredChannels: NotificationChannel[];
+  hasDeviceToken: boolean;
+}
+
+async function guardianLinksWithRouting(studentId: string): Promise<GuardianForRouting[]> {
+  const links = await prisma.studentGuardian.findMany({
+    where: { studentId },
+    include: { guardian: { include: { deviceTokens: { select: { id: true }, take: 1 } } } },
+  });
+  return links.map((link) => ({
+    guardianId: link.guardianId,
+    preferredChannels: link.guardian.preferredChannels as NotificationChannel[],
+    hasDeviceToken: link.guardian.deviceTokens.length > 0,
+  }));
+}
+
+async function dispatchToGuardians(
+  guardians: GuardianForRouting[],
+  studentId: string,
+  whatsappEnabled: boolean,
+  build: (guardianId: string) => { trigger: NotificationTrigger; message: string; attendanceRecordId?: string; dismissalRecordId?: string }
+) {
+  const created = await Promise.all(
+    guardians.flatMap((g) => {
+      const channels = resolveChannels(g.preferredChannels, whatsappEnabled, g.hasDeviceToken);
+      const { trigger, message, attendanceRecordId, dismissalRecordId } = build(g.guardianId);
+      return channels.map((channel) =>
+        prisma.notificationLog.create({
+          data: {
+            studentId,
+            guardianId: g.guardianId,
+            channel,
+            trigger,
+            message,
+            attendanceRecordId,
+            dismissalRecordId,
+          },
+        })
+      );
+    })
+  );
+  created.forEach((log) => simulateDispatch(log.id));
+  return created;
+}
+
 export async function queueAttendanceNotification(params: {
   studentId: string;
   studentName: string;
   schoolName: string;
+  whatsappEnabled: boolean;
   status: AttendanceStatus;
   attendanceRecordId: string;
 }) {
-  const guardianLinks = await prisma.studentGuardian.findMany({
-    where: { studentId: params.studentId },
-    include: { guardian: true },
-  });
-
+  const guardians = await guardianLinksWithRouting(params.studentId);
   const now = new Date();
   const message = buildAttendanceMessage(
     params.status as "PRESENT" | "LATE" | "ABSENT",
@@ -69,42 +136,25 @@ export async function queueAttendanceNotification(params: {
     now
   );
 
-  const created = await Promise.all(
-    guardianLinks.flatMap((link) =>
-      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
-        prisma.notificationLog.create({
-          data: {
-            studentId: params.studentId,
-            guardianId: link.guardianId,
-            channel,
-            trigger: NotificationTrigger.ATTENDANCE_MARKED,
-            message,
-            attendanceRecordId: params.attendanceRecordId,
-          },
-        })
-      )
-    )
-  );
-
-  created.forEach((log) => simulateDispatch(log.id));
-  return created;
+  return dispatchToGuardians(guardians, params.studentId, params.whatsappEnabled, () => ({
+    trigger: NotificationTrigger.ATTENDANCE_MARKED,
+    message,
+    attendanceRecordId: params.attendanceRecordId,
+  }));
 }
 
 export async function queueDismissalNotification(params: {
   studentId: string;
   studentName: string;
   schoolName: string;
+  whatsappEnabled: boolean;
   type: "PICKUP" | "SELF_DISMISSED";
   pickupPersonName: string | null;
   pickupPersonRelationship: string | null;
   matched: boolean;
   dismissalRecordId: string;
 }) {
-  const guardianLinks = await prisma.studentGuardian.findMany({
-    where: { studentId: params.studentId },
-    include: { guardian: true },
-  });
-
+  const guardians = await guardianLinksWithRouting(params.studentId);
   const now = new Date();
   const message = buildDismissalMessage(
     params.type,
@@ -116,72 +166,38 @@ export async function queueDismissalNotification(params: {
     params.matched
   );
 
-  const created = await Promise.all(
-    guardianLinks.flatMap((link) =>
-      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
-        prisma.notificationLog.create({
-          data: {
-            studentId: params.studentId,
-            guardianId: link.guardianId,
-            channel,
-            trigger: NotificationTrigger.DISMISSAL_CONFIRMED,
-            message,
-            dismissalRecordId: params.dismissalRecordId,
-          },
-        })
-      )
-    )
-  );
-
-  created.forEach((log) => simulateDispatch(log.id));
-  return created;
+  return dispatchToGuardians(guardians, params.studentId, params.whatsappEnabled, () => ({
+    trigger: NotificationTrigger.DISMISSAL_CONFIRMED,
+    message,
+    dismissalRecordId: params.dismissalRecordId,
+  }));
 }
 
 export async function queueNotYetArrivedNotification(params: {
   studentId: string;
   studentName: string;
   schoolName: string;
+  whatsappEnabled: boolean;
 }) {
-  const guardianLinks = await prisma.studentGuardian.findMany({
-    where: { studentId: params.studentId },
-    include: { guardian: true },
-  });
-
+  const guardians = await guardianLinksWithRouting(params.studentId);
   const message = buildNotYetArrivedMessage(params.studentName, params.schoolName);
 
-  const created = await Promise.all(
-    guardianLinks.flatMap((link) =>
-      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
-        prisma.notificationLog.create({
-          data: {
-            studentId: params.studentId,
-            guardianId: link.guardianId,
-            channel,
-            trigger: NotificationTrigger.NOT_YET_ARRIVED,
-            message,
-          },
-        })
-      )
-    )
-  );
-
-  created.forEach((log) => simulateDispatch(log.id));
-  return created;
+  return dispatchToGuardians(guardians, params.studentId, params.whatsappEnabled, () => ({
+    trigger: NotificationTrigger.NOT_YET_ARRIVED,
+    message,
+  }));
 }
 
 export async function queueEndOfDayDigestNotification(params: {
   studentId: string;
   studentName: string;
   schoolName: string;
+  whatsappEnabled: boolean;
   periodsAttended: number;
   periodsScheduled: number;
   tagCounts: Partial<Record<string, number>>;
 }) {
-  const guardianLinks = await prisma.studentGuardian.findMany({
-    where: { studentId: params.studentId },
-    include: { guardian: true },
-  });
-
+  const guardians = await guardianLinksWithRouting(params.studentId);
   const message = buildEndOfDayDigestMessage(
     params.studentName,
     params.schoolName,
@@ -190,24 +206,10 @@ export async function queueEndOfDayDigestNotification(params: {
     params.tagCounts
   );
 
-  const created = await Promise.all(
-    guardianLinks.flatMap((link) =>
-      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
-        prisma.notificationLog.create({
-          data: {
-            studentId: params.studentId,
-            guardianId: link.guardianId,
-            channel,
-            trigger: NotificationTrigger.END_OF_DAY_DIGEST,
-            message,
-          },
-        })
-      )
-    )
-  );
-
-  created.forEach((log) => simulateDispatch(log.id));
-  return created;
+  return dispatchToGuardians(guardians, params.studentId, params.whatsappEnabled, () => ({
+    trigger: NotificationTrigger.END_OF_DAY_DIGEST,
+    message,
+  }));
 }
 
 export interface BroadcastInput {
@@ -257,14 +259,27 @@ export async function sendBroadcast(actor: AuthTokenPayload, input: BroadcastInp
   const studentIds = await resolveBroadcastStudentIds(actor, input);
   if (studentIds.length === 0) return { recipients: 0 };
 
+  // A broadcast can span many schools (group-wide scope), so entitlement
+  // is resolved per guardian-student pair against that student's own
+  // school, same as every other notification type.
   const guardianLinks = await prisma.studentGuardian.findMany({
     where: { studentId: { in: studentIds } },
-    select: { studentId: true, guardianId: true },
+    select: {
+      studentId: true,
+      guardianId: true,
+      guardian: { include: { deviceTokens: { select: { id: true }, take: 1 } } },
+      student: { select: { school: { select: { whatsappEnabled: true } } } },
+    },
   });
 
   const created = await Promise.all(
-    guardianLinks.flatMap((link) =>
-      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
+    guardianLinks.flatMap((link) => {
+      const channels = resolveChannels(
+        link.guardian.preferredChannels as NotificationChannel[],
+        link.student.school.whatsappEnabled,
+        link.guardian.deviceTokens.length > 0
+      );
+      return channels.map((channel) =>
         prisma.notificationLog.create({
           data: {
             studentId: link.studentId,
@@ -274,8 +289,8 @@ export async function sendBroadcast(actor: AuthTokenPayload, input: BroadcastInp
             message: input.message,
           },
         })
-      )
-    )
+      );
+    })
   );
 
   created.forEach((log) => simulateDispatch(log.id));

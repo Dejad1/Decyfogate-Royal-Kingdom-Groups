@@ -125,6 +125,7 @@ export async function markAttendance(actor: AuthTokenPayload, input: MarkAttenda
       studentId: student.id,
       studentName: student.fullName,
       schoolName: school.name,
+      whatsappEnabled: school.whatsappEnabled,
       status: input.status,
       attendanceRecordId: record.id,
     });
@@ -301,6 +302,7 @@ export async function runNotYetArrivedCheck(schoolId: string) {
       studentId: student.id,
       studentName: student.fullName,
       schoolName: school.name,
+      whatsappEnabled: school.whatsappEnabled,
     });
   }
 

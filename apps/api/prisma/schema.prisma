@@ -24,6 +24,11 @@ enum Role {
   SUPPORT_AGENT
   BILLING_MANAGER
   COMPLIANCE_OFFICER
+  // Section 11: not a staff role, but reuses the exact same User-style
+  // JWT/auth infrastructure (see identity.service.ts's guardianLogin) --
+  // the token's `sub` points at a Guardian.id instead of a User.id, with
+  // schoolId/groupId left null since a guardian isn't scoped to one school.
+  GUARDIAN
 }
 
 model User {
@@ -87,6 +92,13 @@ model School {
 
   // "not yet arrived" auto-flag cutoff, e.g. "08:30"
   attendanceCutoffTime String @default("08:30")
+
+  // Section 11: WhatsApp is the one notification channel gated by the
+  // school's subscription tier (roughly 5-9x SMS cost per message) --
+  // push/SMS/email are always available. Deliberately a flag on School
+  // rather than restructuring the Group-scoped Subscription/billing model
+  // to be per-school; that's a bigger change than this feature needs.
+  whatsappEnabled Boolean @default(true)
 
   classLevels ClassLevel[]
   subjects    Subject[]
@@ -218,13 +230,50 @@ model Guardian {
   phone    String
   email    String?
 
+  // Section 11 (Parent/Guardian Companion App). null = this guardian has
+  // never set up app access -- they still receive notifications, just
+  // through the pre-Section-11 SMS+WhatsApp behavior (see
+  // preferredChannels' default below), unchanged from before this feature.
+  passwordHash String?
+
+  // What the guardian wants, not what they're entitled to -- WhatsApp
+  // stays in this list even if a specific linked school doesn't have it
+  // enabled; the per-message channel resolution in notifications.service.ts
+  // is what actually enforces the school's entitlement. Defaults to the
+  // exact pre-Section-11 behavior (every guardian got SMS+WhatsApp) so
+  // nothing changes for a guardian who never touches the app.
+  preferredChannels NotificationChannel[] @default([SMS, WHATSAPP])
+
   students         StudentGuardian[]
   notifications    NotificationLog[]
   dismissalRecords DismissalRecord[]
+  deviceTokens     GuardianDeviceToken[]
 
   createdAt DateTime @default(now())
 
   @@index([phone])
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+}
+
+// Simulated push registration -- there is no real Firebase project wired
+// up for this demo (consistent with SMS/WhatsApp also being simulated),
+// so `token` is just an opaque identifier the mobile client generates on
+// "install", not a real FCM token. A guardian can have more than one
+// device.
+model GuardianDeviceToken {
+  id         String         @id @default(uuid())
+  guardianId String
+  guardian   Guardian       @relation(fields: [guardianId], references: [id])
+  token      String         @unique
+  platform   DevicePlatform
+
+  createdAt DateTime @default(now())
+
+  @@index([guardianId])
 }
 
 model StudentGuardian {
@@ -309,9 +358,15 @@ model AttendanceRecord {
 
 // ---------------- notifications ----------------
 
+// Section 11: PUSH and EMAIL added alongside the original SMS/WHATSAPP.
+// Push is free at any volume (the point of the Companion App); SMS and
+// email are cheap and always available; WhatsApp is gated per-school (see
+// School.whatsappEnabled) since it costs roughly 5-9x more than SMS.
 enum NotificationChannel {
   SMS
   WHATSAPP
+  PUSH
+  EMAIL
 }
 
 enum NotificationStatus {

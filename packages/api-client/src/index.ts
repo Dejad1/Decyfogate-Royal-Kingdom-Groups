@@ -10,12 +10,19 @@ import {
   AttendanceStatus,
   BehaviorAlertDto,
   BehaviorTag,
+  ChildSummaryDto,
+  DevicePlatform,
   DismissalType,
   EndOfDayDigestRow,
+  GuardianLoginRequest,
+  GuardianPreferencesDto,
   LogDismissalRequest,
   LoginResponse,
   MarkAttendanceRequest,
+  NotificationChannel,
+  RegisterDeviceTokenRequest,
   SchoolType,
+  UpdateGuardianPreferencesRequest,
   UserSummaryDto,
 } from "@decyfogate/shared-types";
 
@@ -89,7 +96,7 @@ export interface TodayAttendanceRecord {
 
 export interface NotificationLogRow {
   id: string;
-  channel: "SMS" | "WHATSAPP";
+  channel: "SMS" | "WHATSAPP" | "PUSH" | "EMAIL";
   trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED" | "END_OF_DAY_DIGEST";
   message: string;
   status: "QUEUED" | "SENT" | "DELIVERED" | "FAILED";
@@ -98,6 +105,21 @@ export interface NotificationLogRow {
   deliveredAt: string | null;
   student: { fullName: string; classUnitId: string };
   guardian: { fullName: string; phone: string };
+}
+
+// A guardian's own view of NotificationLog -- same row shape minus the
+// guardian field (it's always themselves) since they're not staff looking
+// across a roster.
+export interface GuardianNotificationRow {
+  id: string;
+  channel: "SMS" | "WHATSAPP" | "PUSH" | "EMAIL";
+  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED" | "END_OF_DAY_DIGEST";
+  message: string;
+  status: "QUEUED" | "SENT" | "DELIVERED" | "FAILED";
+  createdAt: string;
+  sentAt: string | null;
+  deliveredAt: string | null;
+  student: { fullName: string };
 }
 
 export interface GuardianShortlistEntry {
@@ -128,6 +150,11 @@ export class DecyfogateApiClient {
 
   login(email: string, password: string) {
     return apiRequest<LoginResponse>(this.baseUrl, "/auth/login", { method: "POST", body: { email, password } });
+  }
+
+  guardianLogin(phone: string, password: string) {
+    const body: GuardianLoginRequest = { phone, password };
+    return apiRequest<LoginResponse>(this.baseUrl, "/auth/guardian-login", { method: "POST", body });
   }
 
   me() {
@@ -176,5 +203,27 @@ export class DecyfogateApiClient {
 
   runEndOfDayDigest(schoolId: string) {
     return this.request<EndOfDayDigestRow[]>("/behavior/run-end-of-day-digest", { method: "POST", body: { schoolId } });
+  }
+
+  getMyChildren() {
+    return this.request<ChildSummaryDto[]>("/guardian/children");
+  }
+
+  getMyNotifications() {
+    return this.request<GuardianNotificationRow[]>("/guardian/notifications");
+  }
+
+  getGuardianPreferences() {
+    return this.request<GuardianPreferencesDto>("/guardian/preferences");
+  }
+
+  updateGuardianPreferences(channels: NotificationChannel[]) {
+    const body: UpdateGuardianPreferencesRequest = { channels };
+    return this.request<GuardianPreferencesDto>("/guardian/preferences", { method: "PATCH", body });
+  }
+
+  registerDeviceToken(token: string, platform: DevicePlatform) {
+    const body: RegisterDeviceTokenRequest = { token, platform };
+    return this.request<{ id: string }>("/guardian/device-tokens", { method: "POST", body });
   }
 }

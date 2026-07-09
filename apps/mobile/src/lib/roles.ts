@@ -10,6 +10,8 @@ export function roleLabel(role: Role): string {
       return "School Admin";
     case Role.GROUP_ADMIN:
       return "Group Admin";
+    case Role.GUARDIAN:
+      return "Parent/Guardian";
     default:
       return role;
   }

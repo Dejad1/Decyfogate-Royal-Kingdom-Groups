@@ -167,6 +167,7 @@ export async function runEndOfDayDigest(actor: AuthTokenPayload, schoolId: strin
         studentId: student.id,
         studentName: student.fullName,
         schoolName: school.name,
+        whatsappEnabled: school.whatsappEnabled,
         periodsAttended: row.periodsAttended,
         periodsScheduled: row.periodsScheduled,
         tagCounts,

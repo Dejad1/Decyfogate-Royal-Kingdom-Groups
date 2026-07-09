@@ -17,6 +17,10 @@ export enum Role {
   SUPPORT_AGENT = "SUPPORT_AGENT",
   BILLING_MANAGER = "BILLING_MANAGER",
   COMPLIANCE_OFFICER = "COMPLIANCE_OFFICER",
+  // Section 11: a guardian logged into the Companion App -- not a staff
+  // role, but authenticated through the same token shape (see
+  // UserSummaryDto below, which a guardian's /auth/me response also fits).
+  GUARDIAN = "GUARDIAN",
 }
 
 export enum AttendanceStatus {
@@ -34,9 +38,19 @@ export enum AttendanceEntryType {
   SUBJECT = "SUBJECT",
 }
 
+// Section 11: PUSH and EMAIL added alongside the original SMS/WHATSAPP.
+// Push/SMS/email are always available; WhatsApp is gated per-school (see
+// SchoolDto.whatsappEnabled) since it costs roughly 5-9x more per message.
 export enum NotificationChannel {
   SMS = "SMS",
   WHATSAPP = "WHATSAPP",
+  PUSH = "PUSH",
+  EMAIL = "EMAIL",
+}
+
+export enum DevicePlatform {
+  IOS = "IOS",
+  ANDROID = "ANDROID",
 }
 
 export enum NotificationStatus {
@@ -95,6 +109,7 @@ export interface SchoolDto {
   name: string;
   type: SchoolType;
   attendanceCutoffTime: string; // "HH:mm", used for the not-yet-arrived flag
+  whatsappEnabled: boolean;
 }
 
 export interface ClassLevelDto {
@@ -278,6 +293,47 @@ export interface LogDismissalRequest {
   pickupPersonRelationship?: string;
   pickupPersonPhone?: string;
   matchedGuardianId?: string;
+}
+
+// ---- Section 11: Parent/Guardian Companion App ----
+
+export interface GuardianLoginRequest {
+  phone: string;
+  password: string;
+}
+
+export interface ChildTodayDismissalDto {
+  type: DismissalType;
+  pickupPersonName: string | null;
+  pickupPersonRelationship: string | null;
+  confirmedAt: string;
+}
+
+export interface ChildSummaryDto {
+  studentId: string;
+  fullName: string;
+  admissionNumber: string;
+  classUnitName: string;
+  schoolName: string;
+  todayAttendanceStatus: AttendanceStatus | null;
+  todayDismissal: ChildTodayDismissalDto | null;
+}
+
+export interface GuardianPreferencesDto {
+  preferredChannels: NotificationChannel[];
+  // Which channels this guardian is allowed to pick from -- PUSH/SMS/EMAIL
+  // always included; WHATSAPP only if at least one linked child's school
+  // has it enabled.
+  availableChannels: NotificationChannel[];
+}
+
+export interface UpdateGuardianPreferencesRequest {
+  channels: NotificationChannel[];
+}
+
+export interface RegisterDeviceTokenRequest {
+  token: string;
+  platform: DevicePlatform;
 }
 
 // ---- Formatting helpers shared by web and mobile ----

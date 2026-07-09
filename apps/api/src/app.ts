@@ -6,6 +6,7 @@ import { attendanceRouter } from "./modules/attendance/attendance.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
 import { dismissalRouter } from "./modules/dismissal/dismissal.routes";
 import { behaviorRouter } from "./modules/behavior/behavior.routes";
+import { guardianRouter } from "./modules/guardian/guardian.routes";
 import { billingRouter } from "./modules/billing/billing.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -23,6 +24,7 @@ export function createApp() {
   app.use("/notifications", notificationsRouter);
   app.use("/dismissal", dismissalRouter);
   app.use("/behavior", behaviorRouter);
+  app.use("/guardian", guardianRouter);
   app.use("/billing", billingRouter);
 
   app.use(errorHandler);
