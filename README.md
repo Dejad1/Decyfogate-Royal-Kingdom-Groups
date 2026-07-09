@@ -7,9 +7,9 @@ for full product context.
 
 This is a client/server monorepo (Turborepo + pnpm workspaces) so the same
 API serves a Next.js web app and an Expo (React Native) mobile app.
-**The backend (Phase 1), seed data (Phase 2), web app (Phase 3), and
-mobile app (Phase 4) exist so far** — see "Status" below. Only the polish
-pass (Phase 6) has not been built yet.
+**Phases 1-4 and 6 of the brief's delivery plan are built, plus Section 9
+(Dismissal & Pickup Confirmation)** — see "Status" below. Section 8 (the
+secondary end-of-day digest) remains explicitly deferred, untouched.
 
 ## Layout
 
@@ -81,7 +81,11 @@ safe because the data is entirely simulated demo data.
    Admin / Form Teacher / Subject Teacher dashboards (see below)
 4. ✅ Mobile app (Expo) — Form Teacher and Subject Teacher flows (see below)
 5. ✅ Marketing landing page — built as part of Phase 3 (see below)
-6. ⬜ Polish pass — not started
+6. ✅ Polish pass — notification simulation realism (see below)
+
+Plus **Section 9: Dismissal & Pickup Confirmation** (approved and built
+ahead of general polish, per explicit instruction — see below). **Section
+8** (secondary end-of-day digest) remains deferred and untouched.
 
 ### Phase 3 notes
 
@@ -141,9 +145,10 @@ safe because the data is entirely simulated demo data.
 - Session persistence (AsyncStorage), roster loading, one-tap marking, and
   the live notification panel all confirmed working identically to web.
 - No work done on Section 8 (the deferred secondary end-of-day digest) --
-  note that section's text wasn't in the brief content shared for this
-  build, so this is a blind compliance with the instruction not to touch
-  it, not a decision I made with visibility into what it specifies.
+  at the time this phase was built, that section's text wasn't in the
+  brief content shared for this build, so it was blind compliance with
+  the instruction not to touch it. The full brief (including Section 8)
+  was shared later; it remains untouched.
 
 **Verified for real, not just typechecked**: ran `expo start --web`
 (the only rigorous option in this sandboxed container -- no iOS/Android
@@ -156,3 +161,63 @@ signed out. Zero console errors throughout. This exercises the same
 React Native component tree, navigation, and API integration that would
 run on-device; it does not exercise iOS/Android-only native modules,
 so a real device/simulator pass is still worth doing before shipping.
+
+### Phase 6 notes (polish pass)
+
+Scoped tightly to the brief's own definition -- making the notification
+simulation look and feel real -- rather than a general redesign:
+
+- Attendance and dismissal notifications now pick from 2-3 message
+  phrasings instead of one fixed template (`apps/api/src/lib/messages.ts`,
+  shared between the live service and the seed script's backfill).
+- Fixed a seed-data realism gap: a whole day's backfilled notifications
+  previously shared one identical timestamp across every student and
+  guardian. Each row is now individually staggered.
+- `NOT_YET_ARRIVED` and `BROADCAST` rows get a distinct visual accent in
+  the notifications panel on both platforms; rows briefly highlight when
+  their status changes between polls; loading skeletons and a real empty
+  state replace bare "Loading..." text; guardian/staff phone numbers are
+  formatted consistently (`formatPhoneNumber` in `@decyfogate/shared-types`).
+
+### Section 9 notes (Dismissal & Pickup Confirmation)
+
+Built as an addition on top of the existing attendance/guardian/
+notification infrastructure, per instruction -- no existing route, role,
+or notification trigger was changed to accommodate it.
+
+**Schema additions** (`AuthorizedPickupPerson`, `DismissalRecord`,
+`DismissalEscalation`, plus a `DISMISSAL_CONFIRMED` notification trigger
+and a nullable `dismissalRecordId` on `NotificationLog`, mirroring how
+`attendanceRecordId` already works) -- proposed and confirmed against the
+full brief text before any migration was written; see the corrected plan
+in the project history for what changed between the first (fragment-based)
+proposal and the final one once the full Section 9 text was available.
+
+**The level rule, enforced server-side, not just in the UI**: Nursery/
+Primary students can only be dismissed via `PICKUP` against an authorized
+guardian or a same-day `AuthorizedPickupPerson` -- `SELF_DISMISSED` is
+rejected outright by the API. Secondary students can use either.
+
+**The safeguarding requirement**: if the person collecting a child isn't
+on the authorized list, the Form Teacher cannot log a dismissal for them
+through the normal flow at all. The UI hard-stops into an escalation
+form instead (`DismissalEscalation`, status `OPEN`/`RESOLVED`), visible to
+the School Admin under a new "Pickup escalations" tab. Resolving an
+escalation never auto-authorizes anyone -- that stays a human decision.
+
+**Notification wording is deliberately distinct** from the morning
+attendance ping (e.g. "...was collected by Gift Ezeh (Mother) at 13:48
+today" vs. "...has left the school premises at 13:48 today" for
+self-dismissal), reusing the exact same guardian fan-out and queued
+SMS/WhatsApp simulation pipeline as attendance.
+
+**Verified for real** against the seeded dataset: logged a pickup as a
+Nursery/Primary Form Teacher and confirmed the guardian notification
+fired with wording distinct from the attendance message; confirmed the
+"Self-dismissed" option is entirely absent from the UI for Nursery/Primary
+(0 buttons rendered) while present for Secondary (20/20 rendered);
+self-dismissed a Secondary student; escalated an unrecognized pickup
+attempt and confirmed the pupil stayed un-dismissed and the escalation
+appeared in the School Admin's inbox for resolution. Checked on both web
+(real Chromium) and mobile (`expo start --web` + Chromium, same sandbox
+constraint as Phase 4). Zero console errors on either platform.

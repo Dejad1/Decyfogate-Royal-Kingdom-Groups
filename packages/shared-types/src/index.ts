@@ -50,6 +50,7 @@ export enum NotificationTrigger {
   ATTENDANCE_MARKED = "ATTENDANCE_MARKED",
   NOT_YET_ARRIVED = "NOT_YET_ARRIVED",
   BROADCAST = "BROADCAST",
+  DISMISSAL_CONFIRMED = "DISMISSAL_CONFIRMED",
 }
 
 export enum BroadcastScope {
@@ -57,6 +58,19 @@ export enum BroadcastScope {
   SCHOOL = "SCHOOL",
   LEVEL = "LEVEL",
   UNIT = "UNIT",
+}
+
+// PICKUP: collected by someone on the authorized list (an existing
+// Guardian or a same-day AuthorizedPickupPerson) -- mandatory for
+// Nursery/Primary. SELF_DISMISSED: left unaccompanied -- Secondary only.
+export enum DismissalType {
+  PICKUP = "PICKUP",
+  SELF_DISMISSED = "SELF_DISMISSED",
+}
+
+export enum EscalationStatus {
+  OPEN = "OPEN",
+  RESOLVED = "RESOLVED",
 }
 
 export interface GroupDto {
@@ -216,6 +230,31 @@ export interface BroadcastRequest {
   classLevelId?: string;
   classUnitId?: string;
   message: string;
+}
+
+export interface LogDismissalRequest {
+  studentId: string;
+  classUnitId: string;
+  date: string;
+  type: DismissalType;
+  guardianId?: string;
+  oneOffPickupPersonId?: string;
+}
+
+export interface AddOneOffPickupPersonRequest {
+  studentId: string;
+  fullName: string;
+  relationship: string;
+  phone?: string;
+  date: string;
+}
+
+export interface EscalateUnauthorizedPickupRequest {
+  studentId: string;
+  classUnitId: string;
+  attemptedPickupPersonName: string;
+  attemptedPickupPersonPhone?: string;
+  note?: string;
 }
 
 // ---- Formatting helpers shared by web and mobile ----

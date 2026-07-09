@@ -8,7 +8,7 @@ import {
 import { prisma } from "../../lib/prisma";
 import { HttpError } from "../../middleware/errorHandler";
 import { AuthTokenPayload } from "../../lib/jwt";
-import { buildAttendanceMessage, buildNotYetArrivedMessage } from "../../lib/messages";
+import { buildAttendanceMessage, buildDismissalMessage, buildNotYetArrivedMessage } from "../../lib/messages";
 
 // Notifications are queued, never dispatched synchronously inside the
 // request that created them (per the build brief). For this demo there is
@@ -75,6 +75,51 @@ export async function queueAttendanceNotification(params: {
             trigger: NotificationTrigger.ATTENDANCE_MARKED,
             message,
             attendanceRecordId: params.attendanceRecordId,
+          },
+        })
+      )
+    )
+  );
+
+  created.forEach((log) => simulateDispatch(log.id));
+  return created;
+}
+
+export async function queueDismissalNotification(params: {
+  studentId: string;
+  studentName: string;
+  schoolName: string;
+  type: "PICKUP" | "SELF_DISMISSED";
+  pickedUpByName: string | null;
+  pickedUpByRelationship: string | null;
+  dismissalRecordId: string;
+}) {
+  const guardianLinks = await prisma.studentGuardian.findMany({
+    where: { studentId: params.studentId },
+    include: { guardian: true },
+  });
+
+  const now = new Date();
+  const message = buildDismissalMessage(
+    params.type,
+    params.studentName,
+    params.schoolName,
+    now,
+    params.pickedUpByName,
+    params.pickedUpByRelationship
+  );
+
+  const created = await Promise.all(
+    guardianLinks.flatMap((link) =>
+      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
+        prisma.notificationLog.create({
+          data: {
+            studentId: params.studentId,
+            guardianId: link.guardianId,
+            channel,
+            trigger: NotificationTrigger.DISMISSAL_CONFIRMED,
+            message,
+            dismissalRecordId: params.dismissalRecordId,
           },
         })
       )

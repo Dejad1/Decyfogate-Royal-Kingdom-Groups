@@ -45,3 +45,29 @@ export function buildNotYetArrivedMessage(studentName: string, schoolName: strin
     `${schoolName}: We have not yet recorded ${studentName} as present today. Please reach the school office if this is unexpected.`,
   ]);
 }
+
+// Deliberately distinct wording from buildAttendanceMessage's morning
+// ping (brief section 9), so a guardian scanning their messages can tell
+// an arrival confirmation from a departure confirmation at a glance.
+export function buildDismissalMessage(
+  type: "PICKUP" | "SELF_DISMISSED",
+  studentName: string,
+  schoolName: string,
+  time: Date,
+  pickedUpByName: string | null,
+  pickedUpByRelationship: string | null,
+  pickFn: PickFn = Math.random
+): string {
+  const stamp = time.toLocaleTimeString("en-NG", { hour: "2-digit", minute: "2-digit" });
+  if (type === "SELF_DISMISSED") {
+    return pick(pickFn, [
+      `${schoolName}: ${studentName} has left the school premises at ${stamp} today.`,
+      `${schoolName}: ${studentName} was dismissed and departed unaccompanied at ${stamp} today.`,
+    ]);
+  }
+  const who = pickedUpByRelationship ? `${pickedUpByName} (${pickedUpByRelationship})` : pickedUpByName ?? "an authorized pickup person";
+  return pick(pickFn, [
+    `${schoolName}: ${studentName} has been picked up by ${who} at ${stamp} today.`,
+    `${schoolName}: ${studentName} was collected by ${who} at ${stamp} today.`,
+  ]);
+}

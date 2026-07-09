@@ -4,6 +4,7 @@ import { identityRouter } from "./modules/identity/identity.routes";
 import { directoryRouter } from "./modules/directory/directory.routes";
 import { attendanceRouter } from "./modules/attendance/attendance.routes";
 import { notificationsRouter } from "./modules/notifications/notifications.routes";
+import { dismissalRouter } from "./modules/dismissal/dismissal.routes";
 import { billingRouter } from "./modules/billing/billing.routes";
 import { errorHandler } from "./middleware/errorHandler";
 
@@ -19,6 +20,7 @@ export function createApp() {
   app.use("/directory", directoryRouter);
   app.use("/attendance", attendanceRouter);
   app.use("/notifications", notificationsRouter);
+  app.use("/dismissal", dismissalRouter);
   app.use("/billing", billingRouter);
 
   app.use(errorHandler);

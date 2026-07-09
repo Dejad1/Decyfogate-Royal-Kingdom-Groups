@@ -47,6 +47,11 @@ model User {
   attendanceMarked   AttendanceRecord[]    @relation("MarkedBy")
   auditLogs          AuditLog[]
 
+  pickupPeopleAdded   AuthorizedPickupPerson[] @relation("PickupPersonAddedBy")
+  dismissalsLogged    DismissalRecord[]        @relation("DismissalLoggedBy")
+  escalationsReported DismissalEscalation[]    @relation("EscalationReportedBy")
+  escalationsResolved DismissalEscalation[]    @relation("EscalationResolvedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -118,9 +123,11 @@ model ClassUnit {
   formTeacherId String?
   formTeacher   User?   @relation("FormTeacher", fields: [formTeacherId], references: [id])
 
-  students           Student[]
-  subjectTeachers    ClassSubjectTeacher[]
-  attendanceRecords  AttendanceRecord[]
+  students             Student[]
+  subjectTeachers      ClassSubjectTeacher[]
+  attendanceRecords    AttendanceRecord[]
+  dismissalRecords     DismissalRecord[]
+  dismissalEscalations DismissalEscalation[]
 
   createdAt DateTime @default(now())
 
@@ -186,9 +193,12 @@ model Student {
   dateOfBirth     DateTime
   gender          Gender
 
-  guardians         StudentGuardian[]
-  attendanceRecords AttendanceRecord[]
-  notifications     NotificationLog[]
+  guardians              StudentGuardian[]
+  attendanceRecords      AttendanceRecord[]
+  notifications          NotificationLog[]
+  authorizedPickupPeople AuthorizedPickupPerson[]
+  dismissalRecords       DismissalRecord[]
+  dismissalEscalations   DismissalEscalation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -208,8 +218,9 @@ model Guardian {
   phone    String
   email    String?
 
-  students      StudentGuardian[]
-  notifications NotificationLog[]
+  students         StudentGuardian[]
+  notifications    NotificationLog[]
+  dismissalRecords DismissalRecord[]
 
   createdAt DateTime @default(now())
 
@@ -217,13 +228,13 @@ model Guardian {
 }
 
 model StudentGuardian {
-  id          String   @id @default(uuid())
-  studentId   String
-  student     Student  @relation(fields: [studentId], references: [id])
-  guardianId  String
-  guardian    Guardian @relation(fields: [guardianId], references: [id])
+  id           String   @id @default(uuid())
+  studentId    String
+  student      Student  @relation(fields: [studentId], references: [id])
+  guardianId   String
+  guardian     Guardian @relation(fields: [guardianId], references: [id])
   relationship String // "Mother" | "Father" | "Uncle" | "Guardian" ...
-  isPrimary   Boolean  @default(false)
+  isPrimary    Boolean  @default(false)
 
   @@unique([studentId, guardianId])
 }
@@ -293,6 +304,7 @@ enum NotificationTrigger {
   ATTENDANCE_MARKED
   NOT_YET_ARRIVED
   BROADCAST
+  DISMISSAL_CONFIRMED
 }
 
 // Dispatch is simulated for the demo (no live Termii/Twilio/WhatsApp
@@ -313,12 +325,119 @@ model NotificationLog {
   attendanceRecordId String?
   attendanceRecord   AttendanceRecord? @relation(fields: [attendanceRecordId], references: [id])
 
+  dismissalRecordId String?
+  dismissalRecord   DismissalRecord? @relation(fields: [dismissalRecordId], references: [id])
+
   createdAt   DateTime  @default(now())
   sentAt      DateTime?
   deliveredAt DateTime?
 
   @@index([studentId])
   @@index([status])
+}
+
+// ---------------- dismissal (Section 9) ----------------
+
+// A School Admin or Form Teacher can authorize someone to collect a
+// specific student for a single day without adding them as a permanent
+// guardian -- e.g. a visiting grandparent. Distinct from Guardian/
+// StudentGuardian, which is the permanent, default authorized list.
+model AuthorizedPickupPerson {
+  id           String   @id @default(uuid())
+  studentId    String
+  student      Student  @relation(fields: [studentId], references: [id])
+  fullName     String
+  relationship String
+  phone        String?
+  date         DateTime // date-only; this authorization is valid for this single day
+
+  addedByUserId String
+  addedByUser   User   @relation("PickupPersonAddedBy", fields: [addedByUserId], references: [id])
+
+  dismissalRecords DismissalRecord[]
+
+  createdAt DateTime @default(now())
+
+  @@index([studentId, date])
+}
+
+// PICKUP: collected by someone on the authorized list (an existing
+// Guardian or a same-day AuthorizedPickupPerson) -- mandatory for
+// Nursery/Primary students. SELF_DISMISSED: the student left
+// unaccompanied -- Secondary students only, enforced in the service layer
+// against Student.school.type, never allowed to be skipped for
+// Nursery/Primary.
+enum DismissalType {
+  PICKUP
+  SELF_DISMISSED
+}
+
+model DismissalRecord {
+  id          String        @id @default(uuid())
+  studentId   String
+  student     Student       @relation(fields: [studentId], references: [id])
+  classUnitId String
+  classUnit   ClassUnit     @relation(fields: [classUnitId], references: [id])
+  date        DateTime // date-only, same truncation convention as AttendanceRecord
+  type        DismissalType
+
+  // exactly one of these is set when type == PICKUP; both null when
+  // type == SELF_DISMISSED. Name/relationship are also denormalized onto
+  // this record so notification copy and history stay stable even if the
+  // guardian record or one-off authorization is later edited or expires.
+  guardianId             String?
+  guardian               Guardian?               @relation(fields: [guardianId], references: [id])
+  oneOffPickupPersonId   String?
+  oneOffPickupPerson     AuthorizedPickupPerson? @relation(fields: [oneOffPickupPersonId], references: [id])
+  pickedUpByName         String?
+  pickedUpByRelationship String?
+
+  loggedByUserId String
+  loggedByUser   User     @relation("DismissalLoggedBy", fields: [loggedByUserId], references: [id])
+  loggedAt       DateTime @default(now())
+
+  notifications NotificationLog[]
+
+  createdAt DateTime @default(now())
+
+  // one dismissal event per student per day
+  @@unique([studentId, date])
+  @@index([classUnitId, date])
+}
+
+enum EscalationStatus {
+  OPEN
+  RESOLVED
+}
+
+// The safeguard for "the person collecting a child is not on the
+// authorized list" (brief section 9): this is deliberately NOT a
+// DismissalRecord. Logging an escalation never dismisses the student --
+// it only raises a flag for the School Admin to review out of band. A
+// dismissal can only be logged normally once that person is added as a
+// guardian or a same-day AuthorizedPickupPerson.
+model DismissalEscalation {
+  id          String    @id @default(uuid())
+  studentId   String
+  student     Student   @relation(fields: [studentId], references: [id])
+  classUnitId String
+  classUnit   ClassUnit @relation(fields: [classUnitId], references: [id])
+
+  attemptedPickupPersonName  String
+  attemptedPickupPersonPhone String?
+  note                       String?
+  status                     EscalationStatus @default(OPEN)
+
+  reportedByUserId String
+  reportedByUser   User   @relation("EscalationReportedBy", fields: [reportedByUserId], references: [id])
+
+  resolvedByUserId String?
+  resolvedByUser   User?     @relation("EscalationResolvedBy", fields: [resolvedByUserId], references: [id])
+  resolvedAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([classUnitId, status])
 }
 
 // ---------------- billing (stubbed) ----------------

@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { formatPhoneNumber } from "@decyfogate/shared-types";
+import { formatPhoneNumber, SchoolType } from "@decyfogate/shared-types";
 import { useAuth } from "@/lib/auth-context";
 import { NotificationsPanel } from "./NotificationsPanel";
+import { DismissalPanel } from "./DismissalPanel";
 
 interface ClassUnitMine {
   id: string;
@@ -25,7 +26,7 @@ interface RosterStudent {
 }
 
 interface RosterResponse {
-  unit: { id: string };
+  unit: { id: string; classLevel: { school: { type: SchoolType } } };
   students: RosterStudent[];
 }
 
@@ -46,11 +47,13 @@ const STATUS_BUTTONS: { status: MarkStatus; label: string; activeClass: string }
 export function FormTeacherDashboard() {
   const { api } = useAuth();
   const [unit, setUnit] = useState<ClassUnitMine | null>(null);
+  const [schoolType, setSchoolType] = useState<SchoolType | null>(null);
   const [students, setStudents] = useState<RosterStudent[]>([]);
   const [marks, setMarks] = useState<Record<string, MarkStatus>>({});
   const [pending, setPending] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"attendance" | "dismissal">("attendance");
 
   const refreshToday = useCallback(
     async (classUnitId: string) => {
@@ -77,6 +80,7 @@ export function FormTeacherDashboard() {
         const roster = await api<RosterResponse>(`/directory/class-units/${myUnit.id}/roster`);
         if (cancelled) return;
         setStudents(roster.students);
+        setSchoolType(roster.unit.classLevel.school.type);
         await refreshToday(myUnit.id);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load roster");
@@ -134,43 +138,63 @@ export function FormTeacherDashboard() {
 
       {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
-      <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white">
-          <ul className="divide-y divide-slate-100">
-            {students.map((student) => {
-              const currentStatus = marks[student.id];
-              const primaryGuardian = student.guardians.find((g) => g.isPrimary) ?? student.guardians[0];
-              return (
-                <li key={student.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium text-slate-900">{student.fullName}</p>
-                    <p className="text-xs text-slate-500">
-                      {student.admissionNumber}
-                      {primaryGuardian && ` · ${primaryGuardian.relationship}: ${formatPhoneNumber(primaryGuardian.guardian.phone)}`}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    {STATUS_BUTTONS.map((btn) => (
-                      <button
-                        key={btn.status}
-                        disabled={pending === student.id}
-                        onClick={() => mark(student.id, btn.status)}
-                        className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
-                          currentStatus === btn.status ? btn.activeClass : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                        }`}
-                      >
-                        {btn.label}
-                      </button>
-                    ))}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-
-        <NotificationsPanel classUnitId={unit.id} />
+      <div className="flex gap-1 border-b border-slate-200">
+        {(["attendance", "dismissal"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded-t-lg px-3.5 py-2 text-sm font-medium capitalize transition ${
+              tab === t ? "border-b-2 border-slate-900 text-slate-900" : "text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {t === "attendance" ? "Attendance" : "Dismissal"}
+          </button>
+        ))}
       </div>
+
+      {tab === "attendance" && (
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
+          <div className="rounded-2xl border border-slate-200 bg-white">
+            <ul className="divide-y divide-slate-100">
+              {students.map((student) => {
+                const currentStatus = marks[student.id];
+                const primaryGuardian = student.guardians.find((g) => g.isPrimary) ?? student.guardians[0];
+                return (
+                  <li key={student.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-slate-900">{student.fullName}</p>
+                      <p className="text-xs text-slate-500">
+                        {student.admissionNumber}
+                        {primaryGuardian && ` · ${primaryGuardian.relationship}: ${formatPhoneNumber(primaryGuardian.guardian.phone)}`}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      {STATUS_BUTTONS.map((btn) => (
+                        <button
+                          key={btn.status}
+                          disabled={pending === student.id}
+                          onClick={() => mark(student.id, btn.status)}
+                          className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-50 ${
+                            currentStatus === btn.status ? btn.activeClass : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                          }`}
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+
+          <NotificationsPanel classUnitId={unit.id} />
+        </div>
+      )}
+
+      {tab === "dismissal" && schoolType && (
+        <DismissalPanel classUnitId={unit.id} schoolType={schoolType} students={students} />
+      )}
     </div>
   );
 }

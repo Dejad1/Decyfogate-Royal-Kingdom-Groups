@@ -35,7 +35,7 @@ export async function getSchoolSubjects(schoolId: string) {
 async function assertCanAccessUnit(actor: AuthTokenPayload, classUnitId: string) {
   const unit = await prisma.classUnit.findUnique({
     where: { id: classUnitId },
-    include: { classLevel: true },
+    include: { classLevel: { include: { school: true } } },
   });
   if (!unit) throw new HttpError(404, "Class unit not found");
 

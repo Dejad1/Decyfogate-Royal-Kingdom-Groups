@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
-import { AttendanceEntryType, AttendanceStatus, formatPhoneNumber } from "@decyfogate/shared-types";
+import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { AttendanceEntryType, AttendanceStatus, formatPhoneNumber, SchoolType } from "@decyfogate/shared-types";
 import { ClassUnitMine, RosterStudent } from "@decyfogate/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { NotificationsPanel } from "@/components/NotificationsPanel";
+import { DismissalPanel } from "@/components/DismissalPanel";
 import { colors } from "@/lib/theme";
 
 const STATUS_BUTTONS: { status: AttendanceStatus; label: string; activeBg: string }[] = [
@@ -15,11 +16,13 @@ const STATUS_BUTTONS: { status: AttendanceStatus; label: string; activeBg: strin
 export function FormTeacherScreen() {
   const { client } = useAuth();
   const [unit, setUnit] = useState<ClassUnitMine | null>(null);
+  const [schoolType, setSchoolType] = useState<SchoolType | null>(null);
   const [students, setStudents] = useState<RosterStudent[]>([]);
   const [marks, setMarks] = useState<Record<string, AttendanceStatus>>({});
   const [pending, setPending] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"attendance" | "dismissal">("attendance");
 
   const refreshToday = useCallback(
     async (classUnitId: string) => {
@@ -46,6 +49,7 @@ export function FormTeacherScreen() {
         const roster = await client.getRoster(myUnit.id);
         if (cancelled) return;
         setStudents(roster.students);
+        setSchoolType(roster.unit.classLevel.school.type);
         await refreshToday(myUnit.id);
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load roster");
@@ -97,25 +101,45 @@ export function FormTeacherScreen() {
 
   const markedCount = Object.keys(marks).length;
 
+  const header = (
+    <View style={styles.headerBlock}>
+      <Text style={styles.eyebrow}>FORM TEACHER</Text>
+      <Text style={styles.title}>
+        {unit.classLevel.name}
+        {unit.name}
+      </Text>
+      <Text style={styles.subtitle}>
+        {markedCount} of {students.length} pupils marked today
+      </Text>
+      {error && <Text style={styles.errorInline}>{error}</Text>}
+      <View style={styles.tabRow}>
+        {(["attendance", "dismissal"] as const).map((t) => (
+          <Pressable key={t} onPress={() => setTab(t)} style={[styles.tabButton, tab === t && styles.tabButtonActive]}>
+            <Text style={[styles.tabButtonText, tab === t && styles.tabButtonTextActive]}>
+              {t === "attendance" ? "Attendance" : "Dismissal"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
+  if (tab === "dismissal") {
+    return (
+      <ScrollView style={styles.list} contentContainerStyle={styles.listContent}>
+        {header}
+        {schoolType && <DismissalPanel classUnitId={unit.id} schoolType={schoolType} students={students} />}
+      </ScrollView>
+    );
+  }
+
   return (
     <FlatList
       style={styles.list}
       contentContainerStyle={styles.listContent}
       data={students}
       keyExtractor={(item) => item.id}
-      ListHeaderComponent={
-        <View style={styles.headerBlock}>
-          <Text style={styles.eyebrow}>FORM TEACHER · DAILY REGISTER</Text>
-          <Text style={styles.title}>
-            {unit.classLevel.name}
-            {unit.name}
-          </Text>
-          <Text style={styles.subtitle}>
-            {markedCount} of {students.length} pupils marked today
-          </Text>
-          {error && <Text style={styles.errorInline}>{error}</Text>}
-        </View>
-      }
+      ListHeaderComponent={header}
       renderItem={({ item: student }) => {
         const currentStatus = marks[student.id];
         const primaryGuardian = student.guardians.find((g) => g.isPrimary) ?? student.guardians[0];
@@ -168,6 +192,11 @@ const styles = StyleSheet.create({
   title: { fontSize: 22, fontWeight: "700", color: colors.textPrimary, marginTop: 4 },
   subtitle: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
   errorInline: { color: colors.red, fontSize: 12, marginTop: 8 },
+  tabRow: { flexDirection: "row", gap: 6, marginTop: 14, borderBottomWidth: 1, borderBottomColor: colors.border },
+  tabButton: { paddingHorizontal: 4, paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: "transparent" },
+  tabButtonActive: { borderBottomColor: colors.navy },
+  tabButtonText: { fontSize: 13, fontWeight: "600", color: colors.textMuted },
+  tabButtonTextActive: { color: colors.textPrimary },
   studentRow: { paddingVertical: 12, gap: 10 },
   studentInfo: {},
   studentName: { fontSize: 14, fontWeight: "600", color: colors.textPrimary },

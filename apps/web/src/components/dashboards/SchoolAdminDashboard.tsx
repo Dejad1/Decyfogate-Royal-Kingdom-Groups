@@ -9,6 +9,7 @@ import { EnrollStudentForm } from "./admin/EnrollStudentForm";
 import { AttendanceReportPanel } from "./admin/AttendanceReportPanel";
 import { LowAttendanceFlagsPanel } from "./admin/LowAttendanceFlagsPanel";
 import { BroadcastForm } from "./admin/BroadcastForm";
+import { EscalationsPanel } from "./admin/EscalationsPanel";
 import { NotificationsPanel } from "./NotificationsPanel";
 
 interface SchoolSummary {
@@ -17,7 +18,7 @@ interface SchoolSummary {
   type: "NURSERY_PRIMARY" | "SECONDARY";
 }
 
-type Tab = "structure" | "staff" | "enroll" | "report" | "flags" | "broadcast" | "notifications";
+type Tab = "structure" | "staff" | "enroll" | "report" | "flags" | "broadcast" | "notifications" | "escalations";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "structure", label: "Class structure" },
@@ -27,6 +28,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "flags", label: "Low-attendance flags" },
   { id: "broadcast", label: "Broadcast" },
   { id: "notifications", label: "Notifications" },
+  { id: "escalations", label: "Pickup escalations" },
 ];
 
 export function SchoolAdminDashboard() {
@@ -94,6 +96,7 @@ export function SchoolAdminDashboard() {
         {tab === "flags" && <LowAttendanceFlagsPanel schoolId={schoolId} />}
         {tab === "broadcast" && <BroadcastForm schoolId={schoolId} canTargetGroup={isGroupAdmin} />}
         {tab === "notifications" && <NotificationsPanel schoolId={schoolId} />}
+        {tab === "escalations" && <EscalationsPanel schoolId={schoolId} />}
       </div>
     </div>
   );

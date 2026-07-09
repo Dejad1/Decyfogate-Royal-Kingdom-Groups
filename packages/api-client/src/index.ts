@@ -6,10 +6,15 @@
 // standard `fetch` global, which both DOM and React Native provide, so
 // nothing here is web- or native-specific.
 import {
+  AddOneOffPickupPersonRequest,
   AttendanceEntryType,
   AttendanceStatus,
+  DismissalType,
+  EscalateUnauthorizedPickupRequest,
+  LogDismissalRequest,
   LoginResponse,
   MarkAttendanceRequest,
+  SchoolType,
   UserSummaryDto,
 } from "@decyfogate/shared-types";
 
@@ -68,7 +73,7 @@ export interface RosterStudent {
 }
 
 export interface RosterResponse {
-  unit: { id: string };
+  unit: { id: string; classLevel: { school: { type: SchoolType } } };
   students: RosterStudent[];
 }
 
@@ -82,7 +87,7 @@ export interface TodayAttendanceRecord {
 export interface NotificationLogRow {
   id: string;
   channel: "SMS" | "WHATSAPP";
-  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST";
+  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED";
   message: string;
   status: "QUEUED" | "SENT" | "DELIVERED" | "FAILED";
   createdAt: string;
@@ -90,6 +95,32 @@ export interface NotificationLogRow {
   deliveredAt: string | null;
   student: { fullName: string; classUnitId: string };
   guardian: { fullName: string; phone: string };
+}
+
+export interface AuthorizedGuardian {
+  guardianId: string;
+  fullName: string;
+  relationship: string;
+  phone: string;
+}
+
+export interface AuthorizedOneOffPerson {
+  id: string;
+  fullName: string;
+  relationship: string;
+  phone: string | null;
+}
+
+export interface AuthorizedPickupListResponse {
+  guardians: AuthorizedGuardian[];
+  oneOffPeopleToday: AuthorizedOneOffPerson[];
+}
+
+export interface DismissalRecordRow {
+  studentId: string;
+  type: DismissalType;
+  pickedUpByName: string | null;
+  pickedUpByRelationship: string | null;
 }
 
 /**
@@ -129,5 +160,25 @@ export class DecyfogateApiClient {
 
   listNotificationLogs(schoolId: string) {
     return this.request<NotificationLogRow[]>(`/notifications/logs?schoolId=${schoolId}`);
+  }
+
+  getAuthorizedPickupList(studentId: string, date: string) {
+    return this.request<AuthorizedPickupListResponse>(`/dismissal/authorized-list?studentId=${studentId}&date=${date}`);
+  }
+
+  addOneOffPickupPerson(input: AddOneOffPickupPersonRequest) {
+    return this.request<AuthorizedOneOffPerson>("/dismissal/one-off-pickup-person", { method: "POST", body: input });
+  }
+
+  logDismissal(input: LogDismissalRequest) {
+    return this.request<DismissalRecordRow>("/dismissal", { method: "POST", body: input });
+  }
+
+  getTodayDismissals(classUnitId: string) {
+    return this.request<DismissalRecordRow[]>(`/dismissal/today?classUnitId=${classUnitId}`);
+  }
+
+  escalateUnauthorizedPickup(input: EscalateUnauthorizedPickupRequest) {
+    return this.request<{ id: string }>("/dismissal/escalate", { method: "POST", body: input });
   }
 }
