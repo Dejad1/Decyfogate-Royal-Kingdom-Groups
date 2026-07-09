@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { AttendanceEntryType, AttendanceStatus, Role } from "@decyfogate/shared-types";
+import { AttendanceEntryType, AttendanceStatus, BehaviorTag, Role } from "@decyfogate/shared-types";
 import { authenticate, requireRole } from "../../middleware/auth";
 import { asyncHandler } from "../../middleware/errorHandler";
 import * as attendanceService from "./attendance.service";
@@ -17,6 +17,8 @@ const markSchema = z.object({
   type: z.nativeEnum(AttendanceEntryType),
   subjectId: z.string().uuid().optional(),
   period: z.string().optional(),
+  behaviorTag: z.nativeEnum(BehaviorTag).optional(),
+  behaviorComment: z.string().optional(),
 });
 
 attendanceRouter.post(

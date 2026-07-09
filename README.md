@@ -7,9 +7,10 @@ for full product context.
 
 This is a client/server monorepo (Turborepo + pnpm workspaces) so the same
 API serves a Next.js web app and an Expo (React Native) mobile app.
-**Phases 1-4 and 6 of the brief's delivery plan are built, plus Section 9
-(Dismissal & Pickup Confirmation)** — see "Status" below. Section 8 (the
-secondary end-of-day digest) remains explicitly deferred, untouched.
+**Phases 1-6 of the brief's delivery plan are built, plus Section 9
+(Dismissal & Pickup Confirmation) and Section 8 (Secondary end-of-day
+digest)** — see "Status" below. The full delivery plan plus both approved
+additions are complete.
 
 ## Layout
 
@@ -83,9 +84,8 @@ safe because the data is entirely simulated demo data.
 5. ✅ Marketing landing page — built as part of Phase 3 (see below)
 6. ✅ Polish pass — notification simulation realism (see below)
 
-Plus **Section 9: Dismissal & Pickup Confirmation** (approved and built
-ahead of general polish, per explicit instruction — see below). **Section
-8** (secondary end-of-day digest) remains deferred and untouched.
+Plus **Section 9: Dismissal & Pickup Confirmation** and **Section 8:
+Secondary end-of-day digest** (both approved and built — see below).
 
 ### Phase 3 notes
 
@@ -226,3 +226,56 @@ Secondary self-dismissal still succeeds; confirmed the School Admin
 dashboard no longer mentions escalations anywhere. Checked on both web
 (real Chromium) and mobile (`expo start --web` + Chromium, same sandbox
 constraint as Phase 4).
+
+### Section 8 notes (Secondary end-of-day digest)
+
+Built as an addition, per the brief's own framing -- no existing route,
+role, or notification trigger was changed to accommodate it. Nursery/
+Primary is untouched; everything here is Secondary-only.
+
+**Behavioral tagging** is additive to the existing Subject Teacher
+attendance mark, not a separate action: `AttendanceRecord` gained optional
+`behaviorTag` (`ATTENTIVE` | `DISRUPTIVE` | `SLEEPING` | `BULLYING_FLAG`)
+and `behaviorComment` columns, enforced server-side to only ever apply to
+a `SUBJECT`-type mark -- the Form Teacher's daily register never carries
+one. Setting a routine tag never notifies anyone; it just feeds the
+digest.
+
+**The digest job** (`runEndOfDayDigest`, mirroring the existing
+`runNotYetArrivedCheck` pattern -- a callable function plus an
+admin-triggerable endpoint, since this environment has no real job
+scheduler) computes, per Secondary student, periods attended vs.
+scheduled and a same-day behavior-tag rollup, then queues one
+consolidated `END_OF_DAY_DIGEST` notification per student to every
+guardian -- a second, distinct daily message, in addition to (never
+replacing) the Form Teacher's morning ping. There is no timetable model
+in the schema (out of scope per the brief's own non-goals), so "periods
+scheduled" is derived from the distinct subjects a class unit has a
+linked Subject Teacher for (`ClassSubjectTeacher`), and "attended" is the
+distinct subjects with a same-day `PRESENT`/`LATE` mark -- a stable proxy
+that needed no new schema. Calling the digest for a Nursery/Primary
+school is rejected outright by the API.
+
+**Bullying-flag escalation is immediate and separate from the digest.**
+The moment a `BULLYING_FLAG` tag is saved, a `BehaviorAlert` row is
+raised for the School Admin -- a dedicated table and "Safeguarding &
+digest" dashboard tab, entirely separate from `NotificationLog` (which is
+guardian-facing SMS/WhatsApp only and has no concept of a `User`
+recipient). Acknowledging an alert is a manual School Admin action and
+never itself notifies the guardian -- the guardian only ever learns about
+it through that day's normal digest message (e.g. "Behavior notes:
+Bullying concern (reviewed by the school) x1"), per the brief's explicit
+sequencing: tag logged → School Admin notified immediately → reviewed by
+the school → guardian informed through the normal digest.
+
+**Verified for real** against the seeded dataset: tagged a Subject
+Teacher mark `BULLYING_FLAG` and confirmed a `BehaviorAlert` was raised
+immediately with zero guardian notifications fired at that moment;
+confirmed the School Admin's "Safeguarding & digest" tab shows it as OPEN
+and can acknowledge it; ran the digest for the Secondary school and
+confirmed the flagged student's guardian notification carried both the
+attended/scheduled count and the deferred bullying disclosure; confirmed
+a routine tag (`DISRUPTIVE`) never raises an alert; confirmed the daily
+register rejects a behavior tag outright (400); confirmed the digest is
+rejected for the Nursery/Primary school (400). Checked on both web (real
+Chromium) and mobile (`expo start --web` + Chromium).

@@ -64,3 +64,17 @@ export interface LowAttendanceFlag {
   classUnitName: string;
   absenceCountTrailing7Days: number;
 }
+
+export interface BehaviorAlert {
+  id: string;
+  studentId: string;
+  studentName: string;
+  classUnitId: string;
+  classUnitName: string;
+  subjectName: string;
+  comment: string | null;
+  status: "OPEN" | "ACKNOWLEDGED";
+  raisedByName: string;
+  createdAt: string;
+  acknowledgedAt: string | null;
+}

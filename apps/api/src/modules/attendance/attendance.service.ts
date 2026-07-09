@@ -3,6 +3,7 @@ import {
   AttendanceReportQuery,
   AttendanceReportRow,
   AttendanceStatus,
+  BehaviorTag,
   LowAttendanceFlagDto,
   Role,
 } from "@decyfogate/shared-types";
@@ -10,6 +11,7 @@ import { prisma } from "../../lib/prisma";
 import { HttpError } from "../../middleware/errorHandler";
 import { AuthTokenPayload } from "../../lib/jwt";
 import * as notificationsService from "../notifications/notifications.service";
+import { raiseBullyingAlertIfNeeded } from "../behavior/behavior.service";
 
 function toDateOnly(iso: string) {
   const d = new Date(iso);
@@ -24,6 +26,8 @@ export interface MarkAttendanceInput {
   type: AttendanceEntryType;
   subjectId?: string;
   period?: string;
+  behaviorTag?: BehaviorTag;
+  behaviorComment?: string;
 }
 
 async function assertMarkingAuthority(actor: AuthTokenPayload, input: MarkAttendanceInput) {
@@ -67,6 +71,15 @@ export async function markAttendance(actor: AuthTokenPayload, input: MarkAttenda
   const date = toDateOnly(input.date);
   const subjectId = input.type === AttendanceEntryType.SUBJECT ? input.subjectId! : null;
 
+  // Section 8: behavioral tagging only ever applies to a Subject
+  // Teacher's per-period mark -- the Form Teacher's daily register
+  // answers a different question and never carries a behavior tag.
+  if (input.type === AttendanceEntryType.DAILY_REGISTER && (input.behaviorTag || input.behaviorComment)) {
+    throw new HttpError(400, "Behavior tags are only recorded on subject-level attendance");
+  }
+  const behaviorTag = input.type === AttendanceEntryType.SUBJECT ? input.behaviorTag ?? null : null;
+  const behaviorComment = input.type === AttendanceEntryType.SUBJECT ? input.behaviorComment?.trim() || null : null;
+
   // Application-level idempotent upsert: Postgres composite-unique indexes
   // treat NULLs as distinct, so a plain DB upsert would not reliably block
   // a second DAILY_REGISTER mark for the same student/day (subjectId is
@@ -80,7 +93,14 @@ export async function markAttendance(actor: AuthTokenPayload, input: MarkAttenda
   const record = existing
     ? await prisma.attendanceRecord.update({
         where: { id: existing.id },
-        data: { status: input.status, markedByUserId: actor.sub, markedAt: new Date(), period: input.period },
+        data: {
+          status: input.status,
+          markedByUserId: actor.sub,
+          markedAt: new Date(),
+          period: input.period,
+          behaviorTag,
+          behaviorComment,
+        },
       })
     : await prisma.attendanceRecord.create({
         data: {
@@ -92,6 +112,8 @@ export async function markAttendance(actor: AuthTokenPayload, input: MarkAttenda
           subjectId,
           period: input.period,
           markedByUserId: actor.sub,
+          behaviorTag,
+          behaviorComment,
         },
       });
 
@@ -105,6 +127,21 @@ export async function markAttendance(actor: AuthTokenPayload, input: MarkAttenda
       schoolName: school.name,
       status: input.status,
       attendanceRecordId: record.id,
+    });
+  }
+
+  // A bullying flag is a safeguarding concern, not a performance one --
+  // it does not wait for the end-of-day digest (see build brief section
+  // 8, point 4). The guardian still only hears about it through the
+  // normal digest.
+  if (behaviorTag === BehaviorTag.BULLYING_FLAG) {
+    await raiseBullyingAlertIfNeeded({
+      attendanceRecordId: record.id,
+      studentId: student.id,
+      classUnitId: input.classUnitId,
+      subjectId: subjectId!,
+      comment: behaviorComment,
+      raisedByUserId: actor.sub,
     });
   }
 

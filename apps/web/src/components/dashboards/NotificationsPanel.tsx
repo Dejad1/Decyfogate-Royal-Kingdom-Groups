@@ -6,7 +6,7 @@ import { useAuth } from "@/lib/auth-context";
 interface NotificationLogRow {
   id: string;
   channel: "SMS" | "WHATSAPP";
-  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED";
+  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED" | "END_OF_DAY_DIGEST";
   message: string;
   status: "QUEUED" | "SENT" | "DELIVERED" | "FAILED";
   createdAt: string;
@@ -33,6 +33,7 @@ const TRIGGER_META: Record<NotificationLogRow["trigger"], { label: string; accen
   NOT_YET_ARRIVED: { label: "⚠ Not yet arrived", accent: "border-l-2 border-amber-400 bg-amber-50/40" },
   BROADCAST: { label: "📢 Broadcast", accent: "border-l-2 border-sky-400 bg-sky-50/40" },
   DISMISSAL_CONFIRMED: { label: "🏠 Dismissal", accent: "border-l-2 border-emerald-400 bg-emerald-50/40" },
+  END_OF_DAY_DIGEST: { label: "📊 Daily digest", accent: "border-l-2 border-violet-400 bg-violet-50/40" },
 };
 
 function timeAgo(iso: string) {

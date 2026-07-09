@@ -49,6 +49,9 @@ model User {
 
   dismissalsConfirmed DismissalRecord[] @relation("DismissalConfirmedBy")
 
+  behaviorAlertsRaised       BehaviorAlert[] @relation("BehaviorAlertRaisedBy")
+  behaviorAlertsAcknowledged BehaviorAlert[] @relation("BehaviorAlertAcknowledgedBy")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -124,6 +127,7 @@ model ClassUnit {
   subjectTeachers   ClassSubjectTeacher[]
   attendanceRecords AttendanceRecord[]
   dismissalRecords  DismissalRecord[]
+  behaviorAlerts    BehaviorAlert[]
 
   createdAt DateTime @default(now())
 
@@ -139,6 +143,7 @@ model Subject {
 
   classLinks        ClassSubjectTeacher[]
   attendanceRecords AttendanceRecord[]
+  behaviorAlerts    BehaviorAlert[]
 
   createdAt DateTime @default(now())
 
@@ -193,6 +198,7 @@ model Student {
   attendanceRecords AttendanceRecord[]
   notifications     NotificationLog[]
   dismissalRecords  DismissalRecord[]
+  behaviorAlerts    BehaviorAlert[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -251,6 +257,18 @@ enum AttendanceEntryType {
   SUBJECT
 }
 
+// ATTENTIVE/DISRUPTIVE/SLEEPING: routine behavioral color for the
+// end-of-day digest (Section 8), never notify anyone on their own.
+// BULLYING_FLAG: a safeguarding concern -- raises a BehaviorAlert to the
+// School Admin the moment it's logged, in addition to appearing in the
+// digest rollup like any other tag.
+enum BehaviorTag {
+  ATTENTIVE
+  DISRUPTIVE
+  SLEEPING
+  BULLYING_FLAG
+}
+
 model AttendanceRecord {
   id          String              @id @default(uuid())
   studentId   String
@@ -266,11 +284,20 @@ model AttendanceRecord {
   subject   Subject? @relation(fields: [subjectId], references: [id])
   period    String?
 
+  // Section 8: optional behavioral tag/comment on a subject-level mark.
+  // Only ever set when type == SUBJECT (enforced in the service layer,
+  // not the schema, matching the pattern used for dismissal's business
+  // rules) -- additive to the mark itself, never changes what a Form
+  // Teacher sees or does, and never independently notifies a guardian.
+  behaviorTag     BehaviorTag?
+  behaviorComment String?
+
   markedByUserId String
   markedByUser   User     @relation("MarkedBy", fields: [markedByUserId], references: [id])
   markedAt       DateTime @default(now())
 
-  notifications NotificationLog[]
+  notifications  NotificationLog[]
+  behaviorAlerts BehaviorAlert[]
 
   createdAt DateTime @default(now())
 
@@ -299,6 +326,7 @@ enum NotificationTrigger {
   NOT_YET_ARRIVED
   BROADCAST
   DISMISSAL_CONFIRMED
+  END_OF_DAY_DIGEST
 }
 
 // Dispatch is simulated for the demo (no live Termii/Twilio/WhatsApp
@@ -377,6 +405,47 @@ model DismissalRecord {
   // one dismissal event per student per day
   @@unique([studentId, date])
   @@index([classUnitId, date])
+}
+
+// ---------------- behavior (Section 8) ----------------
+
+// A BULLYING_FLAG tag is a safeguarding concern, not a performance one --
+// it must not wait for the end-of-day digest. This table is the immediate
+// School Admin inbox for that escalation, entirely separate from
+// NotificationLog (which is guardian-facing SMS/WhatsApp only and has no
+// concept of a User recipient). The guardian is never notified through
+// this table -- they still only hear about it via the normal end-of-day
+// digest, per the brief's explicit sequencing.
+enum BehaviorAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+}
+
+model BehaviorAlert {
+  id          String    @id @default(uuid())
+  studentId   String
+  student     Student   @relation(fields: [studentId], references: [id])
+  classUnitId String
+  classUnit   ClassUnit @relation(fields: [classUnitId], references: [id])
+  subjectId   String
+  subject     Subject   @relation(fields: [subjectId], references: [id])
+
+  attendanceRecordId String
+  attendanceRecord   AttendanceRecord @relation(fields: [attendanceRecordId], references: [id])
+
+  comment String?
+  status  BehaviorAlertStatus @default(OPEN)
+
+  raisedByUserId String
+  raisedByUser   User   @relation("BehaviorAlertRaisedBy", fields: [raisedByUserId], references: [id])
+
+  acknowledgedByUserId String?
+  acknowledgedByUser   User?     @relation("BehaviorAlertAcknowledgedBy", fields: [acknowledgedByUserId], references: [id])
+  acknowledgedAt       DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([classUnitId, status])
 }
 
 // ---------------- billing (stubbed) ----------------

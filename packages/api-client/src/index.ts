@@ -8,7 +8,10 @@
 import {
   AttendanceEntryType,
   AttendanceStatus,
+  BehaviorAlertDto,
+  BehaviorTag,
   DismissalType,
+  EndOfDayDigestRow,
   LogDismissalRequest,
   LoginResponse,
   MarkAttendanceRequest,
@@ -80,12 +83,14 @@ export interface TodayAttendanceRecord {
   status: AttendanceStatus;
   type: AttendanceEntryType;
   subjectId: string | null;
+  behaviorTag: BehaviorTag | null;
+  behaviorComment: string | null;
 }
 
 export interface NotificationLogRow {
   id: string;
   channel: "SMS" | "WHATSAPP";
-  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED";
+  trigger: "ATTENDANCE_MARKED" | "NOT_YET_ARRIVED" | "BROADCAST" | "DISMISSAL_CONFIRMED" | "END_OF_DAY_DIGEST";
   message: string;
   status: "QUEUED" | "SENT" | "DELIVERED" | "FAILED";
   createdAt: string;
@@ -159,5 +164,17 @@ export class DecyfogateApiClient {
 
   getTodayDismissals(classUnitId: string) {
     return this.request<DismissalRecordRow[]>(`/dismissal/today?classUnitId=${classUnitId}`);
+  }
+
+  listBehaviorAlerts(schoolId: string) {
+    return this.request<BehaviorAlertDto[]>(`/behavior/alerts?schoolId=${schoolId}`);
+  }
+
+  acknowledgeBehaviorAlert(alertId: string) {
+    return this.request<BehaviorAlertDto>(`/behavior/alerts/${alertId}/acknowledge`, { method: "POST" });
+  }
+
+  runEndOfDayDigest(schoolId: string) {
+    return this.request<EndOfDayDigestRow[]>("/behavior/run-end-of-day-digest", { method: "POST", body: { schoolId } });
   }
 }

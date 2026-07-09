@@ -8,7 +8,12 @@ import {
 import { prisma } from "../../lib/prisma";
 import { HttpError } from "../../middleware/errorHandler";
 import { AuthTokenPayload } from "../../lib/jwt";
-import { buildAttendanceMessage, buildDismissalMessage, buildNotYetArrivedMessage } from "../../lib/messages";
+import {
+  buildAttendanceMessage,
+  buildDismissalMessage,
+  buildEndOfDayDigestMessage,
+  buildNotYetArrivedMessage,
+} from "../../lib/messages";
 
 // Notifications are queued, never dispatched synchronously inside the
 // request that created them (per the build brief). For this demo there is
@@ -153,6 +158,47 @@ export async function queueNotYetArrivedNotification(params: {
             guardianId: link.guardianId,
             channel,
             trigger: NotificationTrigger.NOT_YET_ARRIVED,
+            message,
+          },
+        })
+      )
+    )
+  );
+
+  created.forEach((log) => simulateDispatch(log.id));
+  return created;
+}
+
+export async function queueEndOfDayDigestNotification(params: {
+  studentId: string;
+  studentName: string;
+  schoolName: string;
+  periodsAttended: number;
+  periodsScheduled: number;
+  tagCounts: Partial<Record<string, number>>;
+}) {
+  const guardianLinks = await prisma.studentGuardian.findMany({
+    where: { studentId: params.studentId },
+    include: { guardian: true },
+  });
+
+  const message = buildEndOfDayDigestMessage(
+    params.studentName,
+    params.schoolName,
+    params.periodsAttended,
+    params.periodsScheduled,
+    params.tagCounts
+  );
+
+  const created = await Promise.all(
+    guardianLinks.flatMap((link) =>
+      ([NotificationChannel.SMS, NotificationChannel.WHATSAPP] as const).map((channel) =>
+        prisma.notificationLog.create({
+          data: {
+            studentId: params.studentId,
+            guardianId: link.guardianId,
+            channel,
+            trigger: NotificationTrigger.END_OF_DAY_DIGEST,
             message,
           },
         })

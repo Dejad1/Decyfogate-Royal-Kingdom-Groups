@@ -21,6 +21,7 @@ const TRIGGER_META: Record<NotificationLogRow["trigger"], { label: string; borde
   NOT_YET_ARRIVED: { label: "⚠ Not yet arrived", borderColor: colors.amberDark },
   BROADCAST: { label: "📢 Broadcast", borderColor: colors.sky },
   DISMISSAL_CONFIRMED: { label: "🏠 Dismissal", borderColor: colors.emerald },
+  END_OF_DAY_DIGEST: { label: "📊 Daily digest", borderColor: colors.violet },
 };
 
 function timeAgo(iso: string) {

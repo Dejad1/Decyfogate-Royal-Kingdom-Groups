@@ -51,6 +51,7 @@ export enum NotificationTrigger {
   NOT_YET_ARRIVED = "NOT_YET_ARRIVED",
   BROADCAST = "BROADCAST",
   DISMISSAL_CONFIRMED = "DISMISSAL_CONFIRMED",
+  END_OF_DAY_DIGEST = "END_OF_DAY_DIGEST",
 }
 
 export enum BroadcastScope {
@@ -66,6 +67,21 @@ export enum BroadcastScope {
 export enum DismissalType {
   PICKUP = "PICKUP",
   SELF_DISMISSED = "SELF_DISMISSED",
+}
+
+// Section 8, secondary schools only. ATTENTIVE/DISRUPTIVE/SLEEPING are
+// routine color for the end-of-day digest; BULLYING_FLAG additionally
+// raises an immediate BehaviorAlert to the School Admin.
+export enum BehaviorTag {
+  ATTENTIVE = "ATTENTIVE",
+  DISRUPTIVE = "DISRUPTIVE",
+  SLEEPING = "SLEEPING",
+  BULLYING_FLAG = "BULLYING_FLAG",
+}
+
+export enum BehaviorAlertStatus {
+  OPEN = "OPEN",
+  ACKNOWLEDGED = "ACKNOWLEDGED",
 }
 
 export interface GroupDto {
@@ -197,6 +213,32 @@ export interface MarkAttendanceRequest {
   type: AttendanceEntryType;
   subjectId?: string;
   period?: string;
+  // Section 8: only accepted when type == SUBJECT.
+  behaviorTag?: BehaviorTag;
+  behaviorComment?: string;
+}
+
+export interface BehaviorAlertDto {
+  id: string;
+  studentId: string;
+  studentName: string;
+  classUnitId: string;
+  classUnitName: string;
+  subjectName: string;
+  comment: string | null;
+  status: BehaviorAlertStatus;
+  raisedByName: string;
+  createdAt: string;
+  acknowledgedAt: string | null;
+}
+
+export interface EndOfDayDigestRow {
+  studentId: string;
+  studentName: string;
+  classUnitName: string;
+  periodsAttended: number;
+  periodsScheduled: number;
+  tagCounts: Partial<Record<BehaviorTag, number>>;
 }
 
 export interface AttendanceReportQuery {

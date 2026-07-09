@@ -80,3 +80,39 @@ export function buildDismissalMessage(
   ]);
   return matched ? base : `${base} This person is not on your usual contact list -- please reach the school if this is unexpected.`;
 }
+
+const BEHAVIOR_TAG_LABELS: Record<string, string> = {
+  ATTENTIVE: "Attentive",
+  DISRUPTIVE: "Disruptive",
+  SLEEPING: "Sleeping",
+  // The guardian only ever learns about a bullying flag through this
+  // digest, never a separate immediate ping -- by the time it reaches
+  // them here the School Admin has already been alerted and had a chance
+  // to look into it (Section 8's explicit sequencing).
+  BULLYING_FLAG: "Bullying concern (reviewed by the school)",
+};
+
+function formatBehaviorRollup(tagCounts: Partial<Record<string, number>>): string {
+  const parts = Object.entries(tagCounts)
+    .filter(([, count]) => (count ?? 0) > 0)
+    .map(([tag, count]) => `${BEHAVIOR_TAG_LABELS[tag] ?? tag} x${count}`);
+  return parts.length > 0 ? ` Behavior notes: ${parts.join(", ")}.` : "";
+}
+
+// One consolidated message per student per day (Section 8, secondary
+// schools only) -- a second, distinct daily notification in addition to,
+// not replacing, the Form Teacher's morning register ping.
+export function buildEndOfDayDigestMessage(
+  studentName: string,
+  schoolName: string,
+  periodsAttended: number,
+  periodsScheduled: number,
+  tagCounts: Partial<Record<string, number>>,
+  pickFn: PickFn = Math.random
+): string {
+  const base = pick(pickFn, [
+    `${schoolName}: ${studentName} attended ${periodsAttended} of ${periodsScheduled} classes today.`,
+    `${schoolName}: Today's summary for ${studentName} -- ${periodsAttended} of ${periodsScheduled} classes attended.`,
+  ]);
+  return base + formatBehaviorRollup(tagCounts);
+}

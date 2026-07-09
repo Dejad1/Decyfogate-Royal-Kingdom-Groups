@@ -23,4 +23,6 @@ export const colors = {
   green: "#15803D",
   greenBg: "#F0FDF4",
   highlightBg: "#FFFBEB",
+  violet: "#6D28D9",
+  violetBg: "#F5F3FF",
 };
