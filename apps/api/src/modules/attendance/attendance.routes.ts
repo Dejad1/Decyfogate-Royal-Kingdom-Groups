@@ -29,6 +29,15 @@ attendanceRouter.post(
   })
 );
 
+attendanceRouter.get(
+  "/today",
+  asyncHandler(async (req, res) => {
+    const classUnitId = req.query.classUnitId as string;
+    if (!classUnitId) return res.status(400).json({ error: "classUnitId is required" });
+    res.json(await attendanceService.getTodayAttendance(req.auth!, classUnitId));
+  })
+);
+
 const reportQuerySchema = z.object({
   schoolId: z.string().uuid().optional(),
   classUnitId: z.string().uuid().optional(),

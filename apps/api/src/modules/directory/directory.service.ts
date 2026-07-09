@@ -70,6 +70,86 @@ export async function getRoster(actor: AuthTokenPayload, classUnitId: string) {
   return { unit, students };
 }
 
+export async function getSchoolStaff(actor: AuthTokenPayload, schoolId: string) {
+  if (actor.role !== Role.GROUP_ADMIN && actor.schoolId !== schoolId) {
+    throw new HttpError(403, "Not your school");
+  }
+
+  const formTeachers = await prisma.user.findMany({
+    where: { schoolId, role: Role.FORM_TEACHER },
+    orderBy: { fullName: "asc" },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      formTeacherOfUnits: { include: { classLevel: true } },
+    },
+  });
+
+  const subjectTeachers = await prisma.user.findMany({
+    where: { schoolId, role: Role.SUBJECT_TEACHER },
+    orderBy: { fullName: "asc" },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      phone: true,
+      subjectAssignments: { include: { subject: true, classUnit: { include: { classLevel: true } } } },
+    },
+  });
+
+  return { formTeachers, subjectTeachers };
+}
+
+const studentGenders = ["MALE", "FEMALE"] as const;
+
+export interface EnrollStudentInput {
+  classUnitId: string;
+  fullName: string;
+  admissionNumber: string;
+  dateOfBirth: string;
+  gender: (typeof studentGenders)[number];
+  guardians: { fullName: string; phone: string; relationship: string; isPrimary: boolean }[];
+}
+
+export async function enrollStudent(actor: AuthTokenPayload, input: EnrollStudentInput) {
+  const unit = await prisma.classUnit.findUnique({
+    where: { id: input.classUnitId },
+    include: { classLevel: true },
+  });
+  if (!unit) throw new HttpError(404, "Class unit not found");
+
+  const schoolId = unit.classLevel.schoolId;
+  if (actor.role !== Role.GROUP_ADMIN && actor.schoolId !== schoolId) {
+    throw new HttpError(403, "Not your school");
+  }
+
+  if (input.guardians.length === 0) {
+    throw new HttpError(400, "At least one guardian is required");
+  }
+
+  const student = await prisma.student.create({
+    data: {
+      schoolId,
+      classUnitId: input.classUnitId,
+      fullName: input.fullName,
+      admissionNumber: input.admissionNumber,
+      dateOfBirth: new Date(input.dateOfBirth),
+      gender: input.gender,
+    },
+  });
+
+  for (const g of input.guardians) {
+    const guardian = await prisma.guardian.create({ data: { fullName: g.fullName, phone: g.phone } });
+    await prisma.studentGuardian.create({
+      data: { studentId: student.id, guardianId: guardian.id, relationship: g.relationship, isPrimary: g.isPrimary },
+    });
+  }
+
+  return student;
+}
+
 export async function listMyClassUnits(actor: AuthTokenPayload) {
   if (actor.role === Role.FORM_TEACHER) {
     return prisma.classUnit.findMany({

@@ -111,6 +111,38 @@ export async function markAttendance(actor: AuthTokenPayload, input: MarkAttenda
   return record;
 }
 
+async function assertReadAccessToUnit(actor: AuthTokenPayload, classUnitId: string) {
+  const unit = await prisma.classUnit.findUnique({
+    where: { id: classUnitId },
+    include: { classLevel: { include: { school: true } } },
+  });
+  if (!unit) throw new HttpError(404, "Class unit not found");
+
+  if (actor.role === Role.GROUP_ADMIN) return unit;
+  if (actor.role === Role.SCHOOL_ADMIN) {
+    if (actor.schoolId !== unit.classLevel.schoolId) throw new HttpError(403, "Not your school");
+    return unit;
+  }
+  if (actor.role === Role.FORM_TEACHER) {
+    if (unit.formTeacherId !== actor.sub) throw new HttpError(403, "Not your class unit");
+    return unit;
+  }
+  if (actor.role === Role.SUBJECT_TEACHER) {
+    const link = await prisma.classSubjectTeacher.findFirst({ where: { classUnitId, teacherId: actor.sub } });
+    if (!link) throw new HttpError(403, "You are not linked to teach this class unit");
+    return unit;
+  }
+  throw new HttpError(403, "Forbidden");
+}
+
+export async function getTodayAttendance(actor: AuthTokenPayload, classUnitId: string) {
+  await assertReadAccessToUnit(actor, classUnitId);
+  const today = toDateOnly(new Date().toISOString());
+  return prisma.attendanceRecord.findMany({
+    where: { classUnitId, date: today },
+  });
+}
+
 function scopeWhereClause(actor: AuthTokenPayload, query: AttendanceReportQuery) {
   const where: Record<string, unknown> = {
     date: { gte: toDateOnly(query.from), lte: toDateOnly(query.to) },
