@@ -240,6 +240,67 @@ app.post('/api/gate/action', async (req, res) => {
 // =========================================================================
 // PILLAR 3: ACADEMY — CLASS TEACHER VIEW (SCOPED TO ONE CLASS)
 // =========================================================================
+app.get('/api/school/admin/overview/:instId', async (req, res) => {
+    try {
+        const inst = await pool.query('SELECT * FROM institutions WHERE id = $1', [req.params.instId]);
+        const classes = await pool.query(`
+            SELECT classes.*, users.name as teacher_name,
+                   (SELECT COUNT(*) FROM entities WHERE entities.class_id = classes.id) as student_count
+            FROM classes LEFT JOIN users ON classes.teacher_id = users.id
+            WHERE classes.institution_id::text = $1 ORDER BY classes.name`, [req.params.instId]);
+
+        const teachers = await pool.query("SELECT * FROM users WHERE institution_id::text = $1 AND role IN ('SCHOOL_ADMIN', 'TEACHER')", [req.params.instId]);
+
+        const attendance = await pool.query(`
+            SELECT status, COUNT(*)::int as count
+            FROM school_attendance
+            WHERE entity_id IN (SELECT id FROM entities WHERE institution_id::text = $1)
+            GROUP BY status`, [req.params.instId]);
+
+        const studentCount = await pool.query('SELECT COUNT(*)::int as total FROM entities WHERE institution_id::text = $1', [req.params.instId]);
+        const presentCount = attendance.rows.find((row) => row.status === 'PRESENT')?.count || 0;
+        const lateCount = attendance.rows.find((row) => row.status === 'LATE')?.count || 0;
+        const absentCount = attendance.rows.find((row) => row.status === 'ABSENT')?.count || 0;
+
+        res.json({
+            institution: inst.rows[0],
+            classes: classes.rows,
+            teachers: teachers.rows,
+            stats: {
+                studentCount: studentCount.rows[0].total,
+                presentCount,
+                lateCount,
+                absentCount,
+                attendanceRate: studentCount.rows[0].total > 0 ? Math.round(((presentCount + lateCount) / studentCount.rows[0].total) * 100) : 0
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/school/teacher/roster/:teacherId', async (req, res) => {
+    try {
+        const teacherRes = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.teacherId]);
+        const classRes = await pool.query('SELECT * FROM classes WHERE teacher_id = $1 LIMIT 1', [req.params.teacherId]);
+
+        if (classRes.rows.length === 0) {
+            return res.json({ teacher: teacherRes.rows[0], classInfo: null, students: [] });
+        }
+
+        const cls = classRes.rows[0];
+        const roster = await pool.query(`
+            SELECT entities.*, stakeholders.name as parent_name, stakeholders.phone_number,
+                   (SELECT status FROM school_attendance WHERE entity_id = entities.id AND date(marked_at) = CURRENT_DATE ORDER BY marked_at DESC LIMIT 1) as today_status
+            FROM entities JOIN stakeholders ON entities.stakeholder_id = stakeholders.id
+            WHERE entities.class_id = $1 ORDER BY entities.name`, [cls.id]);
+
+        res.json({ teacher: teacherRes.rows[0], classInfo: cls, students: roster.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.get('/dashboard/school/class/:teacherId', async (req, res) => {
     try {
         const teacherRes = await pool.query('SELECT * FROM users WHERE id = $1', [req.params.teacherId]);
@@ -420,6 +481,106 @@ app.post('/api/admin/church/register-child', async (req, res) => {
 // =========================================================================
 // TECHNICAL AUTO-SCHEMA GENERATION & RUNTIME SEEDER
 // =========================================================================
+async function seedRoyalKingdomDemo() {
+    const primarySchoolId = 20;
+    const collegeId = 21;
+
+    await pool.query(`
+        INSERT INTO institutions (id, name, type, sector_type)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, sector_type = EXCLUDED.sector_type
+    `, [primarySchoolId, 'Royal Kingdom Nursery and Primary School', 'SCHOOL', 'SCHOOL']);
+
+    await pool.query(`
+        INSERT INTO institutions (id, name, type, sector_type)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, sector_type = EXCLUDED.sector_type
+    `, [collegeId, 'Royal Kingdom College', 'SCHOOL', 'SCHOOL']);
+
+    await pool.query(`
+        INSERT INTO users (id, institution_id, email, password, role, name, phone_number, house_address)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (email) DO UPDATE SET institution_id = EXCLUDED.institution_id, password = EXCLUDED.password, role = EXCLUDED.role, name = EXCLUDED.name, phone_number = EXCLUDED.phone_number, house_address = EXCLUDED.house_address
+    `, [100, primarySchoolId, 'admin@royalkingdom.edu', 'royal123', 'SCHOOL_ADMIN', 'Mrs. Oladipo', '+2348030001111', 'Royal Kingdom Campus']);
+
+    await pool.query(`
+        INSERT INTO users (id, institution_id, email, password, role, name, phone_number, house_address)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (email) DO UPDATE SET institution_id = EXCLUDED.institution_id, password = EXCLUDED.password, role = EXCLUDED.role, name = EXCLUDED.name, phone_number = EXCLUDED.phone_number, house_address = EXCLUDED.house_address
+    `, [101, primarySchoolId, 'formteacher@royalkingdom.edu', 'royal123', 'TEACHER', 'Mrs. Adebayo', '+2348030002222', 'Royal Kingdom Campus']);
+
+    await pool.query(`
+        INSERT INTO users (id, institution_id, email, password, role, name, phone_number, house_address)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        ON CONFLICT (email) DO UPDATE SET institution_id = EXCLUDED.institution_id, password = EXCLUDED.password, role = EXCLUDED.role, name = EXCLUDED.name, phone_number = EXCLUDED.phone_number, house_address = EXCLUDED.house_address
+    `, [102, collegeId, 'subjectteacher@royalkingdom.edu', 'royal123', 'TEACHER', 'Mr. Balogun', '+2348030003333', 'Royal Kingdom College']);
+
+    await pool.query(`
+        INSERT INTO classes (id, institution_id, name, teacher_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id) DO UPDATE SET institution_id = EXCLUDED.institution_id, name = EXCLUDED.name, teacher_id = EXCLUDED.teacher_id
+    `, [200, primarySchoolId, 'Primary 5A', 101]);
+
+    await pool.query(`
+        INSERT INTO classes (id, institution_id, name, teacher_id)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (id) DO UPDATE SET institution_id = EXCLUDED.institution_id, name = EXCLUDED.name, teacher_id = EXCLUDED.teacher_id
+    `, [201, collegeId, 'JSS 2A', 102]);
+
+    const studentSeedData = [
+        { classId: 200, name: 'Tobi Akinola', guardian: 'Mrs. Akinola', phone: '+2348121111111' },
+        { classId: 200, name: 'Ada Okafor', guardian: 'Mr. Okafor', phone: '+2348121111112' },
+        { classId: 200, name: 'Kemi Yusuf', guardian: 'Mrs. Yusuf', phone: '+2348121111113' },
+        { classId: 200, name: 'Sulaimon Hassan', guardian: 'Mr. Hassan', phone: '+2348121111114' },
+        { classId: 200, name: 'Nneka Eze', guardian: 'Mrs. Eze', phone: '+2348121111115' },
+        { classId: 200, name: 'Emeka Nwosu', guardian: 'Mr. Nwosu', phone: '+2348121111116' },
+        { classId: 200, name: 'Rukayat Bello', guardian: 'Mrs. Bello', phone: '+2348121111117' },
+        { classId: 200, name: 'Bolu Ade', guardian: 'Mr. Ade', phone: '+2348121111118' },
+        { classId: 201, name: 'Ifeanyi Chukwu', guardian: 'Mrs. Chukwu', phone: '+2348132222111' },
+        { classId: 201, name: 'Amara Ibrahim', guardian: 'Mr. Ibrahim', phone: '+2348132222112' },
+        { classId: 201, name: 'Dayo Folarin', guardian: 'Mrs. Folarin', phone: '+2348132222113' },
+        { classId: 201, name: 'Zainab Musa', guardian: 'Mr. Musa', phone: '+2348132222114' },
+        { classId: 201, name: 'Chinedu Okafor', guardian: 'Mrs. Okafor', phone: '+2348132222115' },
+        { classId: 201, name: 'Remi Ajayi', guardian: 'Mr. Ajayi', phone: '+2348132222116' },
+        { classId: 201, name: 'Binta Sule', guardian: 'Mrs. Sule', phone: '+2348132222117' },
+        { classId: 201, name: 'Segun Awo', guardian: 'Mr. Awo', phone: '+2348132222118' }
+    ];
+
+    for (const [index, student] of studentSeedData.entries()) {
+        const institutionId = student.classId === 200 ? primarySchoolId : collegeId;
+        const stakeholderId = 5000 + index;
+        await pool.query(
+            `INSERT INTO stakeholders (id, name, phone_number)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, phone_number = EXCLUDED.phone_number`,
+            [stakeholderId, student.guardian, student.phone]
+        );
+
+        const entityId = 6000 + index;
+        await pool.query(
+            `INSERT INTO entities (id, institution_id, stakeholder_id, name, class_id)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (id) DO UPDATE SET institution_id = EXCLUDED.institution_id, stakeholder_id = EXCLUDED.stakeholder_id, name = EXCLUDED.name, class_id = EXCLUDED.class_id`,
+            [entityId, institutionId, stakeholderId, student.name, student.classId]
+        );
+
+        const existingAttendance = await pool.query('SELECT id FROM school_attendance WHERE entity_id = $1 LIMIT 1', [entityId]);
+        if (!existingAttendance.rows[0]) {
+            const statuses = ['PRESENT', 'PRESENT', 'LATE', 'ABSENT', 'PRESENT', 'PRESENT'];
+            for (let day = 0; day < statuses.length; day += 1) {
+                const attendanceId = 7000 + index * 100 + day;
+                const markedAt = new Date(Date.now() - (day + 1) * 86400000);
+                await pool.query(
+                    `INSERT INTO school_attendance (id, entity_id, status, marked_at)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (id) DO NOTHING`,
+                    [attendanceId, entityId, statuses[day], markedAt]
+                );
+            }
+        }
+    }
+}
+
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, async () => {
     console.log(`🚀 DecyfoGate Core Online & Verified on Port ${PORT}`);
@@ -535,6 +696,7 @@ http.listen(PORT, async () => {
         await pool.query("INSERT INTO entities (id, institution_id, stakeholder_id, name, class_id) VALUES (20, 2, 20, 'Tolu Balogun', 1) ON CONFLICT (id) DO UPDATE SET class_id = 1");
         await pool.query("INSERT INTO entities (id, institution_id, stakeholder_id, name, class_id) VALUES (21, 2, 20, 'Tomi Balogun', 1) ON CONFLICT (id) DO UPDATE SET class_id = 1");
 
+        await seedRoyalKingdomDemo();
         console.log("✅ All database structures and core credentials verified.");
     } catch (e) { console.log("DB Boot Seed Exception: ", e.message); }
 });
